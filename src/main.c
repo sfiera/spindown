@@ -1,3 +1,4 @@
+#include <gba_input.h>
 #include <gba_interrupt.h>
 #include <gba_systemcalls.h>
 #include <gba_video.h>
@@ -52,7 +53,8 @@ int main() {
     }
 
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
-    rotate(0);
+    u16 angle   = 0x4000;
+    rotate(angle >> 8);
 
     for (size_t i = 1; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = tilesPal[i];
@@ -73,13 +75,28 @@ int main() {
     // REG_DISPSTAT |= LCDC_VBL;
     // REG_IME = 1;
 
-    u16 angle   = 0;
+    u16 last_keys = REG_KEYINPUT;
+    s16 turning = 0;
     while (true) {
         // VBlankIntrWait();
         while (REG_VCOUNT < 160) {
         }
         while (REG_VCOUNT == 160) {
         }
-        rotate((++angle) >> 8);
+        if (turning) {
+            angle += turning;
+            rotate(angle >> 8);
+            if (!(angle & 0x3FFF)) {
+                turning = 0;
+            }
+        } else {
+            u16 press = (~REG_KEYINPUT & last_keys);
+            if (press & (KEY_L | KEY_LEFT)) {
+                turning = -4;
+            } else if (press & (KEY_R | KEY_RIGHT)) {
+                turning = +4;
+            }
+            last_keys = REG_KEYINPUT;
+        }
     }
 }
