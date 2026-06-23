@@ -11,6 +11,7 @@ include $(DEVKITARM)/base_tools
 
 TARGET      = spindown.gba
 SRC         = src/main.c
+GRIT        = gfx/tiles.grit
 
 .PHONY: all
 all: $(TARGET)
@@ -27,7 +28,7 @@ DEFINES     =
 INCLUDES    = -iquote $(BUILD) \
               -iquote include \
               $(LIBDIRS:%=-isystem %/include)
-CFLAGS      = -g -Wall -Os \
+CFLAGS      = -g -Wall -Werror -Os \
               $(ARCH) -mcpu=arm7tdmi -mtune=arm7tdmi \
               -fomit-frame-pointer \
               -ffast-math \
@@ -40,7 +41,7 @@ LDFLAGS     = -g $(ARCH) -Wl,-Map,$@.map \
               -Wl,--gc-sections \
               $(LIBDIRS:%=-L%/lib) $(LIBS)
 
-OBJ         = $(SRC:%=$(BUILD)/%.o)
+OBJ         = $(SRC:%=$(BUILD)/%.o) $(GRIT:%.grit=$(BUILD)/$(BUILD)/%.s.o)
 
 .PHONY: clean
 clean:
@@ -66,12 +67,12 @@ $(BUILD)/%.s.o: %.s
 	@mkdir -p $(dir $@)
 	$(CC) -MMD -MP -MF $(BUILD)/$*.d -c $< -o $@ $(ERROR_FILTER)
 
-$(BUILD)/%.s $(BUILD)/%.h: %
-	bin2s -a 4 -H $(BUILD)/$*.h $< > $(BUILD)/$*.s
-
-%.s %.h: %.grit
-	grit -ff $< -fts -o$*
+build/%.s build/%.h: %.grit %.png
+	@mkdir -p $(dir $@)
+	grit $*.png -ff $*.grit -fts -o build/$*.grit
 
 .SECONDARY:
+
+build/src/main.c.o: build/gfx/tiles.h
 
 -include $(OBJ:.o=.d)
