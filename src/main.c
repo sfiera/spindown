@@ -1,9 +1,11 @@
 #include <gba_input.h>
 #include <gba_interrupt.h>
+#include <gba_sprites.h>
 #include <gba_systemcalls.h>
 #include <gba_video.h>
 #include <string.h>
 #include "gfx/tiles.h"
+#include "gfx/orbs.h"
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
@@ -42,19 +44,36 @@ void rotate(u8 angle) {
     REG_BG2PD = pd;
     REG_BG2X  = 168 * 0x100 - (pa * 120 + pb * 80);
     REG_BG2Y  = 168 * 0x100 - (pc * 120 + pd * 80);
+
+    OAM[0].attr0  = (74 - ((pa * -66 + pb * 18) >> 9));
+    OAM[0].attr1  = (114 - ((pc * -66 + pd * 18) >> 9)) | OBJ_SIZE(1);
+    OAM[1].attr0  = (74 - ((pa * -66 + pb * 6) >> 9));
+    OAM[1].attr1  = (114 - ((pc * -66 + pd * 6) >> 9)) | OBJ_SIZE(1);
+    OAM[2].attr0  = (74 - ((pa * -66 + pb * -6) >> 9));
+    OAM[2].attr1  = (114 - ((pc * -66 + pd * -6) >> 9)) | OBJ_SIZE(1);
+    OAM[3].attr0  = (74 - ((pa * -66 + pb * -18) >> 9));
+    OAM[3].attr1  = (114 - ((pc * -66 + pd * -18) >> 9)) | OBJ_SIZE(1);
 }
 
 int main() {
     REG_DISPCNT = LCDC_OFF;  // Enable forced blank
 
+    u32 *tileset = CHAR_BASE_ADR(0);
+    for (size_t i = 0; i < tilesTilesLen / 4; ++i) {
+        tileset[i] = tilesTiles[i];
+    }
+    for (size_t i = 0; i < orbsTilesLen / 2; ++i) {
+        SPRITE_GFX[i] = orbsTiles[i];
+    }
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = tilesPal[i];
     }
+    for (size_t i = 0; i < orbsPalLen / 2; ++i) {
+        OBJ_COLORS[i] = orbsPal[i];
+    }
 
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
-    u16 angle   = 0x4000;
-    rotate(angle >> 8);
 
     for (size_t i = 1; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = tilesPal[i];
@@ -68,7 +87,18 @@ int main() {
         map_out += (32 - 21);
     }
 
-    REG_DISPCNT = MODE_2 | BG2_ON | OBJ_ON;
+    OAM[0].attr2 = 4 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    OAM[1].attr2 = 0 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    OAM[2].attr2 = 4 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    OAM[3].attr2 = 0 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    for (size_t i = 4; i < 128; ++i) {
+        OAM[i].attr0 = 191;
+    }
+
+    u16 angle   = 0x4000;
+    rotate(angle >> 8);
+
+    REG_DISPCNT = MODE_2 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
 
     // INT_VECTOR = interrupt;
     // REG_IE |= IRQ_VBLANK;

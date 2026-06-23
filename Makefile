@@ -11,7 +11,8 @@ include $(DEVKITARM)/base_tools
 
 TARGET      = spindown.gba
 SRC         = src/main.c
-GRIT        = gfx/tiles.grit
+GRIT        = gfx/orbs.grit \
+              gfx/tiles.grit
 
 .PHONY: all
 all: $(TARGET)
@@ -74,5 +75,6 @@ build/%.s build/%.h: %.grit %.png
 .SECONDARY:
 
 build/src/main.c.o: build/gfx/tiles.h
+build/src/main.c.o: build/gfx/orbs.h
 
 -include $(OBJ:.o=.d)
