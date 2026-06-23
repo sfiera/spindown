@@ -1,0 +1,15 @@
+---
+BasedOnStyle:                                    Chromium
+
+IndentWidth:                                     4
+ColumnLimit:                                     99
+
+BinPackArguments:                                true
+BinPackParameters:                               true
+AlignAfterOpenBracket:                           AlwaysBreak
+AlignConsecutiveAssignments:                     true
+AlignConsecutiveDeclarations:                    true
+AlignOperands:                                   true
+SortIncludes:                                    true
+AllowShortCaseLabelsOnASingleLine:               true
+AllowShortFunctionsOnASingleLine:                true
