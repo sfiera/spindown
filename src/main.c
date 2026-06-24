@@ -4,8 +4,8 @@
 #include <gba_systemcalls.h>
 #include <gba_video.h>
 #include <string.h>
-#include "gfx/tiles.h"
 #include "gfx/orbs.h"
+#include "gfx/tiles.h"
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
@@ -34,10 +34,10 @@ s16 sin_table[256] = {
 };
 
 void rotate(u8 angle) {
-    s16 pa    = 2 * sin_table[angle];
-    s16 pb    = 2 * -sin_table[(angle + 64) & 0xFF];
-    s16 pc    = 2 * sin_table[(angle + 64) & 0xFF];
-    s16 pd    = 2 * sin_table[angle];
+    s16 pa    = 2 * sin_table[(angle + 64) & 0xFF];
+    s16 pb    = 2 * -sin_table[angle];
+    s16 pc    = 2 * sin_table[angle];
+    s16 pd    = 2 * sin_table[(angle + 64) & 0xFF];
     REG_BG2PA = pa;
     REG_BG2PB = pb;
     REG_BG2PC = pc;
@@ -45,20 +45,20 @@ void rotate(u8 angle) {
     REG_BG2X  = 168 * 0x100 - (pa * 120 + pb * 80);
     REG_BG2Y  = 168 * 0x100 - (pc * 120 + pd * 80);
 
-    OAM[0].attr0  = (74 - ((pa * -66 + pb * 18) >> 9));
-    OAM[0].attr1  = (114 - ((pc * -66 + pd * 18) >> 9)) | OBJ_SIZE(1);
-    OAM[1].attr0  = (74 - ((pa * -66 + pb * 6) >> 9));
-    OAM[1].attr1  = (114 - ((pc * -66 + pd * 6) >> 9)) | OBJ_SIZE(1);
-    OAM[2].attr0  = (74 - ((pa * -66 + pb * -6) >> 9));
-    OAM[2].attr1  = (114 - ((pc * -66 + pd * -6) >> 9)) | OBJ_SIZE(1);
-    OAM[3].attr0  = (74 - ((pa * -66 + pb * -18) >> 9));
-    OAM[3].attr1  = (114 - ((pc * -66 + pd * -18) >> 9)) | OBJ_SIZE(1);
+    OAM[0].attr0 = (74 - ((pa * -66 + pb * 18) >> 9));
+    OAM[0].attr1 = (114 - ((pc * -66 + pd * 18) >> 9)) | OBJ_SIZE(1);
+    OAM[1].attr0 = (74 - ((pa * -66 + pb * 6) >> 9));
+    OAM[1].attr1 = (114 - ((pc * -66 + pd * 6) >> 9)) | OBJ_SIZE(1);
+    OAM[2].attr0 = (74 - ((pa * -66 + pb * -6) >> 9));
+    OAM[2].attr1 = (114 - ((pc * -66 + pd * -6) >> 9)) | OBJ_SIZE(1);
+    OAM[3].attr0 = (74 - ((pa * -66 + pb * -18) >> 9));
+    OAM[3].attr1 = (114 - ((pc * -66 + pd * -18) >> 9)) | OBJ_SIZE(1);
 }
 
 int main() {
     REG_DISPCNT = LCDC_OFF;  // Enable forced blank
 
-    u32 *tileset = CHAR_BASE_ADR(0);
+    u32* tileset = CHAR_BASE_ADR(0);
     for (size_t i = 0; i < tilesTilesLen / 4; ++i) {
         tileset[i] = tilesTiles[i];
     }
@@ -95,7 +95,7 @@ int main() {
         OAM[i].attr0 = 191;
     }
 
-    u16 angle   = 0x4000;
+    u16 angle = 0;
     rotate(angle >> 8);
 
     REG_DISPCNT = MODE_2 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
@@ -106,7 +106,7 @@ int main() {
     // REG_IME = 1;
 
     u16 last_keys = REG_KEYINPUT;
-    s16 turning = 0;
+    s16 turning   = 0;
     while (true) {
         // VBlankIntrWait();
         while (REG_VCOUNT < 160) {
