@@ -35,8 +35,8 @@ s16 sin_table[256] = {
 
 void rotate(u8 angle) {
     s16 pa    = 2 * sin_table[(angle + 64) & 0xFF];
-    s16 pb    = 2 * -sin_table[angle];
-    s16 pc    = 2 * sin_table[angle];
+    s16 pb    = 2 * sin_table[angle];
+    s16 pc    = 2 * -sin_table[angle];
     s16 pd    = 2 * sin_table[(angle + 64) & 0xFF];
     REG_BG2PA = pa;
     REG_BG2PB = pb;
