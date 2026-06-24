@@ -9,6 +9,32 @@
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
+typedef struct level {
+    u8         w, h;
+    const char title[30];
+    const char data[14 * 14];
+} level_t;
+
+static level_t level = {
+    14,
+    14,
+    "PLUS",
+    "....######...."
+    "....#    #...."
+    "....#    #...."
+    "....#    #...."
+    "#####    #####"
+    "##          ##"
+    "#A    #00   B#"
+    "#B     #    A#"
+    "##          ##"
+    "#####    #####"
+    "....#    #...."
+    "....#    #...."
+    "....#baba#...."
+    "....######....",
+};
+
 void interrupt() {
     REG_IF = IRQ_VBLANK;
     REG_IFBIOS |= IRQ_VBLANK;
@@ -33,26 +59,53 @@ s16 sin_table[256] = {
     -97,  -92,  -86,  -80,  -74,  -68,  -62,  -56,  -49,  -43,  -37,  -31,  -25,  -18,  -12,  -6,
 };
 
-void rotate(u8 angle) {
-    s16 pa    = 2 * sin_table[(angle + 64) & 0xFF];
-    s16 pb    = 2 * sin_table[angle];
-    s16 pc    = 2 * -sin_table[angle];
-    s16 pd    = 2 * sin_table[(angle + 64) & 0xFF];
-    REG_BG2PA = pa;
-    REG_BG2PB = pb;
-    REG_BG2PC = pc;
-    REG_BG2PD = pd;
-    REG_BG2X  = 168 * 0x100 - (pa * 120 + pb * 80);
-    REG_BG2Y  = 168 * 0x100 - (pc * 120 + pd * 80);
+typedef struct {
+    s8 x, y;
+} sprite_loc_t;
+sprite_loc_t sprite_locs[128] = {
+};
 
-    OAM[0].attr0 = (74 - ((pa * -66 + pb * 18) >> 9));
-    OAM[0].attr1 = (114 - ((pc * -66 + pd * 18) >> 9)) | OBJ_SIZE(1);
-    OAM[1].attr0 = (74 - ((pa * -66 + pb * 6) >> 9));
-    OAM[1].attr1 = (114 - ((pc * -66 + pd * 6) >> 9)) | OBJ_SIZE(1);
-    OAM[2].attr0 = (74 - ((pa * -66 + pb * -6) >> 9));
-    OAM[2].attr1 = (114 - ((pc * -66 + pd * -6) >> 9)) | OBJ_SIZE(1);
-    OAM[3].attr0 = (74 - ((pa * -66 + pb * -18) >> 9));
-    OAM[3].attr1 = (114 - ((pc * -66 + pd * -18) >> 9)) | OBJ_SIZE(1);
+u8 sprite_count = 0;
+
+void rotate(u8 angle) {
+    s16 cos    = sin_table[(angle + 64) & 0xFF];
+    s16 sin    = sin_table[angle];
+    REG_BG2PA = 2 * cos;
+    REG_BG2PB = 2 * sin;
+    REG_BG2PC = 2 * -sin;
+    REG_BG2PD = 2 * cos;
+    REG_BG2X  = 168 * 0x100 - (cos * 2 * 120 + sin * 2 * 80);
+    REG_BG2Y  = 168 * 0x100 - (-sin * 2 * 120 + cos * 2 * 80);
+
+    for (u8 i = 0; i < sprite_count; ++i) {
+        s8 x = sprite_locs[i].x, y = sprite_locs[i].y;
+        OAM[i].attr0 = (74 - ((cos * y + sin * x) >> 8));
+        OAM[i].attr1 = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+    }
+}
+
+void set_tile(u8 x, u8 y, u8 value) {
+    x *= 3;
+    y *= 3;
+    u16* map = MAP_BASE_ADR(8);
+    for (u8 yy = y; yy < y + 3; ++yy) {
+        for (u8 xx = x; xx < x + 3; ++xx) {
+            u16* loc = &map[(yy << 5) | (xx >> 1)];
+            if (xx & 1) {
+                *loc = (*loc & 0x00FF) | (value << 8);
+            } else {
+                *loc = (*loc & 0xFF00) | (value << 0);
+            }
+        }
+    }
+}
+
+void set_orb(u8 x, u8 y, u8 value) {
+    set_tile(x, y, 2);
+    u8 idx = sprite_count++;
+    sprite_locs[idx].x = 78 - x * 12;
+    sprite_locs[idx].y = 78 - y * 12;
+    OAM[idx].attr2 = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
 }
 
 int main() {
@@ -69,30 +122,28 @@ int main() {
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = tilesPal[i];
     }
+    REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
+
+    for (size_t i = 4; i < 128; ++i) {
+        OAM[i].attr0 = 191;
+    }
     for (size_t i = 0; i < orbsPalLen / 2; ++i) {
         OBJ_COLORS[i] = orbsPal[i];
     }
 
-    REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
-
-    for (size_t i = 1; i < tilesPalLen / 2; ++i) {
-        BG_COLORS[i] = tilesPal[i];
-    }
-    volatile u16* map_out = MAP_BASE_ADR(8);
-    const u16*    map_in  = tilesMap;
-    for (int y = 0; y < 42; ++y) {
-        for (int x = 0; x < 21; ++x) {
-            *(map_out++) = *(map_in++);
+    const char* tiles = level.data;
+    for (u8 y = 0; y < level.h; ++y) {
+        for (u8 x = 0; x < level.w; ++x) {
+            switch (*(tiles++)) {
+                case '#': set_tile(x, y, 1); break;
+                case ' ': set_tile(x, y, 2); break;
+                case '0': set_tile(x, y, 3); break;
+                case 'A': set_tile(x, y, 4); break;
+                case 'B': set_tile(x, y, 5); break;
+                case 'a': set_orb(x, y, 0); break;
+                case 'b': set_orb(x, y, 1); break;
+            }
         }
-        map_out += (32 - 21);
-    }
-
-    OAM[0].attr2 = 4 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
-    OAM[1].attr2 = 0 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
-    OAM[2].attr2 = 4 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
-    OAM[3].attr2 = 0 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
-    for (size_t i = 4; i < 128; ++i) {
-        OAM[i].attr0 = 191;
     }
 
     u16 angle = 0;
