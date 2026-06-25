@@ -156,23 +156,23 @@ IWRAM_CODE int main() {
         }
     }
 
-    u16 angle = 0;
-    rotate(angle >> 8);
+    u8 angle = 0;
+    rotate(angle);
 
     REG_DISPCNT = MODE_2 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
 
-    // INT_VECTOR = interrupt;
-    // REG_IE |= IRQ_VBLANK;
-    // REG_DISPSTAT |= LCDC_VBL;
-    // REG_IME = 1;
+    INT_VECTOR = interrupt;
+    REG_DISPSTAT |= LCDC_VBL;
+    REG_IE |= IRQ_VBLANK;
+    REG_IME = 1;
 
     u16 last_keys = REG_KEYINPUT;
     s16 turning   = 0;
     while (true) {
         if (turning) {
             angle += turning;
-            rotate(angle >> 8);
-            if (!(angle & 0x3FFF)) {
+            rotate(angle);
+            if (!(angle & 0x3F)) {
                 turning = 0;
             }
         } else {
@@ -185,11 +185,7 @@ IWRAM_CODE int main() {
             last_keys = REG_KEYINPUT;
         }
 
-        // VBlankIntrWait();
-        while (REG_VCOUNT < 160) {
-        }
-        while (REG_VCOUNT == 160) {
-        }
+        VBlankIntrWait();
 
         REG_BG2PA = bg2.pa;
         REG_BG2PB = bg2.pb;
