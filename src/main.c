@@ -16,7 +16,7 @@ typedef struct level {
     const char data[14 * 14];
 } level_t;
 
-static level_t level = {
+static level_t level_set[1] = {{
     14,
     14,
     "PLUS",
@@ -34,7 +34,7 @@ static level_t level = {
     "....#    #...."
     "....#baba#...."
     "....######....",
-};
+}};
 
 IWRAM_CODE void interrupt() {
     REG_IF = IRQ_VBLANK;
@@ -66,6 +66,14 @@ typedef struct {
 IWRAM_DATA sprite_loc_t sprite_locs[128];
 IWRAM_DATA u8           sprite_count = 0;
 
+typedef struct {
+    u8   tile;
+    s8   sprite;
+    u8   delta;
+    bool supported;
+} cell_t;
+IWRAM_DATA cell_t level[16 * 16];
+
 IWRAM_DATA union {
     OBJATTR   sprites[128];
     OBJAFFINE affine[32];
@@ -94,8 +102,12 @@ IWRAM_CODE void rotate(u8 angle) {
 }
 
 void set_tile(u8 x, u8 y, u8 value) {
+    level[(y << 4) | x].tile   = value;
+    level[(y << 4) | x].sprite = -1;
+
     x *= 3;
     y *= 3;
+
     u16* map = MAP_BASE_ADR(8);
     for (u8 yy = y; yy < y + 3; ++yy) {
         for (u8 xx = x; xx < x + 3; ++xx) {
@@ -109,12 +121,78 @@ void set_tile(u8 x, u8 y, u8 value) {
     }
 }
 
+IWRAM_CODE bool check_gravity(u8 angle) {
+    u8 start;
+    s8 next_cell, next_row;
+    switch (angle >> 6) {
+        case 0: start = 13 * 16, next_row = -1, next_cell = -16; break;
+        case 1: start = 13 * 16, next_row = -16, next_cell = -1; break;
+        case 2: start = 0, next_row = +1, next_cell = +16; break;
+        case 3: start = 0, next_row = +16, next_cell = +1; break;
+    }
+
+    bool any  = false;
+    u8   head = start;
+    for (int i = 0; i < 14; ++i) {
+        u8 index = head;
+        head += next_row;
+        cell_t *prev, *cell = NULL;
+        for (int j = 0; j < 14; ++j) {
+            prev = cell;
+            cell = &level[index];
+            index += next_cell;
+            if (cell->sprite < 0) {
+                cell->supported = (cell->tile != 2);
+            } else {
+                cell->supported = !prev || prev->supported;
+                any             = any || !cell->supported;
+            }
+        }
+    }
+    return any;
+}
+
+IWRAM_CODE void fall(u8 angle, u8 remainder) {
+    u8 start;
+    s8 next_cell, next_row;
+    s8 dx = 0, dy = 0;
+    switch (angle >> 6) {
+        case 0: start = 13 * 16, next_row = -1, next_cell = -16, dy = -2; break;
+        case 1: start = 13 * 16, next_row = -16, next_cell = -1, dx = -2; break;
+        case 2: start = 0, next_row = +1, next_cell = +16, dy = +2; break;
+        case 3: start = 0, next_row = +16, next_cell = +1, dx = +2; break;
+    }
+
+    u8 head = start;
+    for (int i = 0; i < 14; ++i) {
+        u8 index = head;
+        head += next_row;
+        cell_t *prev, *cell = NULL;
+        for (int j = 0; j < 14; ++j) {
+            prev = cell;
+            cell = &level[index];
+            index += next_cell;
+            if ((cell->sprite < 0) || cell->supported) {
+                continue;
+            }
+            sprite_loc_t* loc = &sprite_locs[cell->sprite];
+            loc->x += dx;
+            loc->y += dy;
+            if (!remainder) {
+                prev->sprite = cell->sprite;
+                cell->sprite = -1;
+            }
+        }
+    }
+}
+
 void set_orb(u8 x, u8 y, u8 value) {
     set_tile(x, y, 2);
-    u8 idx                    = sprite_count++;
-    sprite_locs[idx].x        = 78 - x * 12;
-    sprite_locs[idx].y        = 78 - y * 12;
-    shadow.sprites[idx].attr2 = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    u8 idx                     = sprite_count++;
+    level[(y << 4) | x].sprite = idx;
+    sprite_locs[idx].x         = 78 - x * 12;
+    sprite_locs[idx].y         = 78 - y * 12;
+    shadow.sprites[idx].attr2  = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
 }
 
 IWRAM_CODE int main() {
@@ -141,10 +219,11 @@ IWRAM_CODE int main() {
         OBJ_COLORS[i] = orbsPal[i];
     }
 
-    const char* tiles = level.data;
-    for (u8 y = 0; y < level.h; ++y) {
-        for (u8 x = 0; x < level.w; ++x) {
+    const char* tiles = level_set[0].data;
+    for (u8 y = 0; y < level_set[0].h; ++y) {
+        for (u8 x = 0; x < level_set[0].w; ++x) {
             switch (*(tiles++)) {
+                case '.': set_tile(x, y, 0); break;
                 case '#': set_tile(x, y, 1); break;
                 case ' ': set_tile(x, y, 2); break;
                 case '0': set_tile(x, y, 3); break;
@@ -168,12 +247,22 @@ IWRAM_CODE int main() {
 
     u16 last_keys = REG_KEYINPUT;
     s16 turning   = 0;
+    u16 falling   = 0;
     while (true) {
         if (turning) {
             angle += turning;
             rotate(angle);
             if (!(angle & 0x3F)) {
                 turning = 0;
+                if (check_gravity(angle)) {
+                    falling = 6;
+                }
+            }
+        } else if (falling) {
+            fall(angle, --falling);
+            rotate(angle);
+            if (!falling && check_gravity(angle)) {
+                falling = 6;
             }
         } else {
             u16 press = (~REG_KEYINPUT & last_keys);
