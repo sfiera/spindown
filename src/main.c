@@ -16,25 +16,39 @@ typedef struct level {
     const char data[14 * 14];
 } level_t;
 
-static level_t level_set[1] = {{
-    14,
-    14,
-    "PLUS",
-    "....######...."
-    "....#    #...."
-    "....#    #...."
-    "....#    #...."
-    "#####    #####"
-    "##          ##"
-    "#A    #00   B#"
-    "#B     #    A#"
-    "##          ##"
-    "#####    #####"
-    "....#    #...."
-    "....#    #...."
-    "....#baba#...."
-    "....######....",
-}};
+static level_t level_set[] = {
+    {
+        7,
+        7,
+        "BASIC 1",
+        "#######"
+        "#     #"
+        "#  a  #"
+        "#  #  #"
+        "#     #"
+        "#  A  #"
+        "#######",
+    },
+    {
+        14,
+        14,
+        "PLUS",
+        "....######...."
+        "....#    #...."
+        "....#    #...."
+        "....#    #...."
+        "#####    #####"
+        "##          ##"
+        "#A    #00   B#"
+        "#B     #    A#"
+        "##          ##"
+        "#####    #####"
+        "....#    #...."
+        "....#    #...."
+        "....#baba#...."
+        "....######....",
+    },
+};
 
 IWRAM_CODE void interrupt() {
     REG_IF = IRQ_VBLANK;
@@ -73,6 +87,7 @@ typedef struct {
     bool supported;
 } cell_t;
 IWRAM_DATA cell_t level[16 * 16];
+IWRAM_DATA u8     width, height;
 
 IWRAM_DATA union {
     OBJATTR   sprites[128];
@@ -91,8 +106,8 @@ IWRAM_CODE void rotate(u8 angle) {
     bg2.pb  = 2 * sin;
     bg2.pc  = 2 * -sin;
     bg2.pd  = 2 * cos;
-    bg2.x   = 168 * 0x100 - (cos * (2 * 120 - 1) + sin * (2 * 80 - 1));
-    bg2.y   = 168 * 0x100 - (-sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
+    bg2.x   = 12 * width * 0x100 - (cos * (2 * 120 - 1) + sin * (2 * 80 - 1));
+    bg2.y   = 12 * height * 0x100 - (-sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
 
     for (u8 i = 0; i < sprite_count; ++i) {
         s8 x = sprite_locs[i].x, y = sprite_locs[i].y;
@@ -190,8 +205,8 @@ void set_orb(u8 x, u8 y, u8 value) {
     set_tile(x, y, 2);
     u8 idx                     = sprite_count++;
     level[(y << 4) | x].sprite = idx;
-    sprite_locs[idx].x         = 78 - x * 12;
-    sprite_locs[idx].y         = 78 - y * 12;
+    sprite_locs[idx].x         = 6 * width - 6 - x * 12;
+    sprite_locs[idx].y         = 6 * width - 6 - y * 12;
     shadow.sprites[idx].attr2  = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
 }
 
@@ -220,6 +235,8 @@ IWRAM_CODE int main() {
     }
 
     const char* tiles = level_set[0].data;
+    width             = level_set[0].w;
+    height            = level_set[0].h;
     for (u8 y = 0; y < level_set[0].h; ++y) {
         for (u8 x = 0; x < level_set[0].w; ++x) {
             switch (*(tiles++)) {
