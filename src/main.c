@@ -140,8 +140,8 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     u8 start;
     s8 next_cell, next_row;
     switch (angle >> 6) {
-        case 0: start = 13 * 16, next_row = -1, next_cell = -16; break;
-        case 1: start = 13 * 16, next_row = -16, next_cell = -1; break;
+        case 0: start = (13 << 4) | 13, next_row = -1, next_cell = -16; break;
+        case 1: start = (13 << 4) | 13, next_row = -16, next_cell = -1; break;
         case 2: start = 0, next_row = +1, next_cell = +16; break;
         case 3: start = 0, next_row = +16, next_cell = +1; break;
     }
@@ -172,8 +172,8 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
     s8 next_cell, next_row;
     s8 dx = 0, dy = 0;
     switch (angle >> 6) {
-        case 0: start = 13 * 16, next_row = -1, next_cell = -16, dy = -2; break;
-        case 1: start = 13 * 16, next_row = -16, next_cell = -1, dx = -2; break;
+        case 0: start = (13 << 4) | 13, next_row = -1, next_cell = -16, dy = -2; break;
+        case 1: start = (13 << 4) | 13, next_row = -16, next_cell = -1, dx = -2; break;
         case 2: start = 0, next_row = +1, next_cell = +16, dy = +2; break;
         case 3: start = 0, next_row = +16, next_cell = +1, dx = +2; break;
     }
@@ -232,6 +232,10 @@ IWRAM_CODE int main() {
     }
     for (size_t i = 0; i < orbsPalLen / 2; ++i) {
         OBJ_COLORS[i] = orbsPal[i];
+    }
+
+    for (u16 i = 0; i < 256; ++i) {
+        level[i].sprite = -1;
     }
 
     const char* tiles = level_set[0].data;
