@@ -77,6 +77,7 @@ IWRAM_DATA s16 sin_table[256] = {
 
 typedef struct {
     s8 x, y;
+    u8 color;
 } sprite_loc_t;
 IWRAM_DATA sprite_loc_t sprite_locs[128];
 IWRAM_DATA u8           sprite_count = 0;
@@ -85,7 +86,6 @@ typedef struct {
     u8   tile;
     s8   sprite;
     bool supported : 1;
-    bool matched : 1;
 } cell_t;
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
@@ -204,32 +204,34 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
     }
 }
 
-IWRAM_CODE void match_cells(cell_t* a, cell_t* b) {
-    int a_color = (a->tile >= 4) ? (a->tile - 4) : a->sprite;
-    int b_color = (b->tile >= 4) ? (b->tile - 4) : b->sprite;
-    if ((a_color < 0) || (a_color != b_color)) {
-        return;
-    }
-    a->matched = true;
-    b->matched = true;
+IWRAM_CODE bool match_cells(const cell_t* a, const cell_t* b) {
+    int a_color = (a->sprite >= 0) ? sprite_locs[a->sprite].color : (a->tile - 4);
+    int b_color = (b->sprite >= 0) ? sprite_locs[b->sprite].color : (b->tile - 4);
+    return (a_color >= 0) && (a_color == b_color);
 }
 
 IWRAM_CODE bool match() {
-    for (int x = 0; x < 13; ++x) {
-        for (int y = 0; y < 13; ++y) {
+    u16 match[14] = {};
+    for (int y = 0; y < 13; ++y) {
+        for (int x = 0; x < 13; ++x) {
             int     idx = (y << 4) | x;
             cell_t *a = &level[idx], *b = &level[idx + 1], *c = &level[idx + 16];
-            match_cells(a, b);
-            match_cells(a, c);
+            if (match_cells(a, b)) {
+                match[y] = (3 << x);
+            }
+            if (match_cells(a, c)) {
+                match[y]     = (1 << x);
+                match[y + 1] = (1 << x);
+            }
         }
     }
 
     bool done = true;
-    for (int x = 0; x < 14; ++x) {
-        for (int y = 0; y < 14; ++y) {
+    for (int y = 0; y < 14; ++y) {
+        for (int x = 0; x < 14; ++x) {
             int     idx  = (y << 4) | x;
             cell_t* cell = &level[idx];
-            if (!cell->matched) {
+            if (!(match[y] & (1 << x))) {
                 if ((cell->tile >= 4) || (cell->sprite >= 0)) {
                     done = false;
                 }
@@ -251,6 +253,7 @@ void set_orb(u8 x, u8 y, u8 value) {
     level[(y << 4) | x].sprite = idx;
     sprite_locs[idx].x         = 6 * width - 6 - x * 12;
     sprite_locs[idx].y         = 6 * width - 6 - y * 12;
+    sprite_locs[idx].color     = value;
     shadow.sprites[idx].attr2  = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
 }
 
@@ -262,6 +265,10 @@ void play_level(int lvl) {
     }
     for (u16 i = 0; i < 256; ++i) {
         level[i].sprite = -1;
+    }
+    u16* map = MAP_BASE_ADR(8);
+    for (int i = 0; i < 64 * 64 / 2; ++i) {
+        map[i] = 0;
     }
 
     const char* tiles = level_set[lvl].data;
@@ -309,10 +316,11 @@ void play_level(int lvl) {
             fall(angle, --falling);
             rotate(angle);
             if (!falling) {
-                if (match()) {
-                    return;
-                }
                 if (check_gravity(angle)) {
+                    falling = 6;
+                } else if (match()) {
+                    return;
+                } else if (check_gravity(angle)) {
                     falling = 6;
                 }
             }
