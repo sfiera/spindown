@@ -48,6 +48,7 @@ static level_t level_set[] = {
         "....#baba#...."
         "....######....",
     },
+    {},
 };
 
 IWRAM_CODE void interrupt() {
@@ -83,7 +84,6 @@ IWRAM_DATA u8           sprite_count = 0;
 typedef struct {
     u8   tile;
     s8   sprite;
-    u8   delta;
     bool supported : 1;
     bool matched : 1;
 } cell_t;
@@ -214,7 +214,7 @@ IWRAM_CODE void match_cells(cell_t* a, cell_t* b) {
     b->matched = true;
 }
 
-IWRAM_CODE void match() {
+IWRAM_CODE bool match() {
     for (int x = 0; x < 13; ++x) {
         for (int y = 0; y < 13; ++y) {
             int     idx = (y << 4) | x;
@@ -223,11 +223,16 @@ IWRAM_CODE void match() {
             match_cells(a, c);
         }
     }
+
+    bool done = true;
     for (int x = 0; x < 14; ++x) {
         for (int y = 0; y < 14; ++y) {
             int     idx  = (y << 4) | x;
             cell_t* cell = &level[idx];
             if (!cell->matched) {
+                if ((cell->tile >= 4) || (cell->sprite >= 0)) {
+                    done = false;
+                }
                 continue;
             }
             if (cell->sprite >= 0) {
@@ -237,6 +242,7 @@ IWRAM_CODE void match() {
             set_tile(x, y, 2);
         }
     }
+    return done;
 }
 
 void set_orb(u8 x, u8 y, u8 value) {
@@ -248,39 +254,21 @@ void set_orb(u8 x, u8 y, u8 value) {
     shadow.sprites[idx].attr2  = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
 }
 
-IWRAM_CODE int main() {
-    REG_DISPCNT = LCDC_OFF;  // Enable forced blank
-
-    u32* tileset = CHAR_BASE_ADR(0);
-    for (size_t i = 0; i < tilesTilesLen / 4; ++i) {
-        tileset[i] = tilesTiles[i];
-    }
-    for (size_t i = 0; i < orbsTilesLen / 2; ++i) {
-        SPRITE_GFX[i] = orbsTiles[i];
-    }
-    memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
-    for (size_t i = 0; i < tilesPalLen / 2; ++i) {
-        BG_COLORS[i] = tilesPal[i];
-    }
-    REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
-
+void play_level(int lvl) {
+    sprite_count = 0;
     for (size_t i = 0; i < 128; ++i) {
         OAM[i].attr0            = 191;
         shadow.sprites[i].attr0 = 191;
     }
-    for (size_t i = 0; i < orbsPalLen / 2; ++i) {
-        OBJ_COLORS[i] = orbsPal[i];
-    }
-
     for (u16 i = 0; i < 256; ++i) {
         level[i].sprite = -1;
     }
 
-    const char* tiles = level_set[0].data;
-    width             = level_set[0].w;
-    height            = level_set[0].h;
-    for (u8 y = 0; y < level_set[0].h; ++y) {
-        for (u8 x = 0; x < level_set[0].w; ++x) {
+    const char* tiles = level_set[lvl].data;
+    width             = level_set[lvl].w;
+    height            = level_set[lvl].h;
+    for (u8 y = 0; y < level_set[lvl].h; ++y) {
+        for (u8 x = 0; x < level_set[lvl].w; ++x) {
             switch (*(tiles++)) {
                 case '.': set_tile(x, y, 0); break;
                 case '#': set_tile(x, y, 1); break;
@@ -321,7 +309,9 @@ IWRAM_CODE int main() {
             fall(angle, --falling);
             rotate(angle);
             if (!falling) {
-                match();
+                if (match()) {
+                    return;
+                }
                 if (check_gravity(angle)) {
                     falling = 6;
                 }
@@ -345,5 +335,30 @@ IWRAM_CODE int main() {
         REG_BG2X  = bg2.x;
         REG_BG2Y  = bg2.y;
         DMA3COPY(&shadow, OAM, 128 | DMA16 | DMA_IMMEDIATE);
+    }
+}
+
+IWRAM_CODE int main() {
+    REG_DISPCNT = LCDC_OFF;  // Enable forced blank
+
+    u32* tileset = CHAR_BASE_ADR(0);
+    for (size_t i = 0; i < tilesTilesLen / 4; ++i) {
+        tileset[i] = tilesTiles[i];
+    }
+    for (size_t i = 0; i < orbsTilesLen / 2; ++i) {
+        SPRITE_GFX[i] = orbsTiles[i];
+    }
+    memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
+    for (size_t i = 0; i < tilesPalLen / 2; ++i) {
+        BG_COLORS[i] = tilesPal[i];
+    }
+    for (size_t i = 0; i < orbsPalLen / 2; ++i) {
+        OBJ_COLORS[i] = orbsPal[i];
+    }
+    REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
+
+    int i = 0;
+    while (level_set[i].w) {
+        play_level(i++);
     }
 }
