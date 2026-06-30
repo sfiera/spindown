@@ -126,14 +126,15 @@ void set_tile(u8 x, u8 y, u8 value) {
     x *= 3;
     y *= 3;
 
-    u16* map = MAP_BASE_ADR(8);
+    u16*      map = MAP_BASE_ADR(8);
+    const u8* src = &tilesMap[value * 9];
     for (u8 yy = y; yy < y + 3; ++yy) {
         for (u8 xx = x; xx < x + 3; ++xx) {
             u16* loc = &map[(yy << 5) | (xx >> 1)];
             if (xx & 1) {
-                *loc = (*loc & 0x00FF) | (value << 8);
+                *loc = (*loc & 0x00FF) | (*(src++) << 8);
             } else {
-                *loc = (*loc & 0xFF00) | (value << 0);
+                *loc = (*loc & 0xFF00) | (*(src++) << 0);
             }
         }
     }
@@ -254,7 +255,7 @@ void set_orb(u8 x, u8 y, u8 value) {
     sprite_locs[idx].x         = 6 * width - 6 - x * 12;
     sprite_locs[idx].y         = 6 * width - 6 - y * 12;
     sprite_locs[idx].color     = value;
-    shadow.sprites[idx].attr2  = (value * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    shadow.sprites[idx].attr2  = ATTR2_PRIORITY(0) | ATTR2_PALETTE(value);
 }
 
 void play_level(int lvl) {

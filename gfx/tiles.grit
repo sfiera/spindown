@@ -1,9 +1,11 @@
 -g
--gTFF00FF
 -gB8
 
 -p
 -ps0
 -pe15
 
+-m
+-mu8
+-mB8
 -mRa
