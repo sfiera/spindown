@@ -84,7 +84,8 @@ typedef struct {
     u8   tile;
     s8   sprite;
     u8   delta;
-    bool supported;
+    bool supported : 1;
+    bool matched : 1;
 } cell_t;
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
@@ -111,8 +112,10 @@ IWRAM_CODE void rotate(u8 angle) {
 
     for (u8 i = 0; i < sprite_count; ++i) {
         s8 x = sprite_locs[i].x, y = sprite_locs[i].y;
-        shadow.sprites[i].attr0 = (74 - ((cos * y + sin * x) >> 8));
-        shadow.sprites[i].attr1 = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        if (y != 127) {
+            shadow.sprites[i].attr0 = (74 - ((cos * y + sin * x) >> 8));
+            shadow.sprites[i].attr1 = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        }
     }
 }
 
@@ -201,6 +204,41 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
     }
 }
 
+IWRAM_CODE void match_cells(cell_t* a, cell_t* b) {
+    int a_color = (a->tile >= 4) ? (a->tile - 4) : a->sprite;
+    int b_color = (b->tile >= 4) ? (b->tile - 4) : b->sprite;
+    if ((a_color < 0) || (a_color != b_color)) {
+        return;
+    }
+    a->matched = true;
+    b->matched = true;
+}
+
+IWRAM_CODE void match() {
+    for (int x = 0; x < 13; ++x) {
+        for (int y = 0; y < 13; ++y) {
+            int     idx = (y << 4) | x;
+            cell_t *a = &level[idx], *b = &level[idx + 1], *c = &level[idx + 16];
+            match_cells(a, b);
+            match_cells(a, c);
+        }
+    }
+    for (int x = 0; x < 14; ++x) {
+        for (int y = 0; y < 14; ++y) {
+            int     idx  = (y << 4) | x;
+            cell_t* cell = &level[idx];
+            if (!cell->matched) {
+                continue;
+            }
+            if (cell->sprite >= 0) {
+                shadow.sprites[cell->sprite].attr0 = 191;
+                sprite_locs[cell->sprite].y        = 127;
+            }
+            set_tile(x, y, 2);
+        }
+    }
+}
+
 void set_orb(u8 x, u8 y, u8 value) {
     set_tile(x, y, 2);
     u8 idx                     = sprite_count++;
@@ -282,8 +320,11 @@ IWRAM_CODE int main() {
         } else if (falling) {
             fall(angle, --falling);
             rotate(angle);
-            if (!falling && check_gravity(angle)) {
-                falling = 6;
+            if (!falling) {
+                match();
+                if (check_gravity(angle)) {
+                    falling = 6;
+                }
             }
         } else {
             u16 press = (~REG_KEYINPUT & last_keys);
