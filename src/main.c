@@ -90,9 +90,12 @@ typedef struct {
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
 
-IWRAM_DATA union {
-    OBJATTR   sprites[128];
-    OBJAFFINE affine[32];
+IWRAM_DATA struct {
+    union {
+        OBJATTR   sprites[128];
+        OBJAFFINE affine[32];
+    };
+    u8 tilemap[56 * 64];
 } shadow;
 
 IWRAM_DATA struct {
@@ -126,16 +129,10 @@ void set_tile(u8 x, u8 y, u8 value) {
     x *= 3;
     y *= 3;
 
-    u16*      map = MAP_BASE_ADR(8);
     const u8* src = &tilesMap[value * 9];
     for (u8 yy = y; yy < y + 3; ++yy) {
         for (u8 xx = x; xx < x + 3; ++xx) {
-            u16* loc = &map[(yy << 5) | (xx >> 1)];
-            if (xx & 1) {
-                *loc = (*loc & 0x00FF) | (*(src++) << 8);
-            } else {
-                *loc = (*loc & 0xFF00) | (*(src++) << 0);
-            }
+            shadow.tilemap[(yy << 6) | xx] = *(src++);
         }
     }
 }
@@ -272,10 +269,7 @@ void play_level(int lvl) {
     for (u16 i = 0; i < 256; ++i) {
         level[i].sprite = -1;
     }
-    u16* map = MAP_BASE_ADR(8);
-    for (int i = 0; i < 64 * 64 / 2; ++i) {
-        map[i] = 0;
-    }
+    bzero(shadow.tilemap, sizeof(shadow.tilemap));
 
     const char* tiles = level_set[lvl].data;
     width             = level_set[lvl].w;
@@ -348,7 +342,11 @@ void play_level(int lvl) {
         REG_BG2PD = bg2.pd;
         REG_BG2X  = bg2.x;
         REG_BG2Y  = bg2.y;
-        DMA3COPY(&shadow, OAM, 128 | DMA16 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.sprites, OAM, 128 | DMA16 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[0], MAP_BASE_ADR(8), 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[896], MAP_BASE_ADR(8) + 896, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[1792], MAP_BASE_ADR(8) + 1792, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
     }
 }
 
