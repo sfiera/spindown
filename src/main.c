@@ -77,7 +77,7 @@ IWRAM_DATA s16 sin_table[256] = {
 
 typedef struct {
     s8 x, y;
-    u8 color;
+    s8 color;
 } sprite_loc_t;
 IWRAM_DATA sprite_loc_t sprite_locs[128];
 IWRAM_DATA u8           sprite_count = 0;
@@ -248,14 +248,19 @@ IWRAM_CODE bool match() {
     return done;
 }
 
-void set_orb(u8 x, u8 y, u8 value) {
+void set_orb(u8 x, u8 y, s8 value) {
     set_tile(x, y, 2);
     u8 idx                     = sprite_count++;
     level[(y << 4) | x].sprite = idx;
     sprite_locs[idx].x         = 6 * width - 6 - x * 12;
     sprite_locs[idx].y         = 6 * width - 6 - y * 12;
     sprite_locs[idx].color     = value;
-    shadow.sprites[idx].attr2  = ATTR2_PRIORITY(0) | ATTR2_PALETTE(value);
+    if (value >= 0) {
+        shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(value);
+    } else {
+        int links                 = 0;
+        shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+    }
 }
 
 void play_level(int lvl) {
@@ -281,7 +286,7 @@ void play_level(int lvl) {
                 case '.': set_tile(x, y, 0); break;
                 case '#': set_tile(x, y, 1); break;
                 case ' ': set_tile(x, y, 2); break;
-                case '0': set_tile(x, y, 3); break;
+                case '0': set_orb(x, y, -1); break;
                 case 'A': set_tile(x, y, 4); break;
                 case 'B': set_tile(x, y, 5); break;
                 case 'a': set_orb(x, y, 0); break;
