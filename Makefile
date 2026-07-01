@@ -10,7 +10,8 @@ endif
 include $(DEVKITARM)/base_tools
 
 TARGET      = spindown.gba
-SRC         = src/main.c
+SRC         = src/levels.c \
+              src/main.c
 GRIT        = gfx/orbs.grit \
               gfx/tiles.grit
 

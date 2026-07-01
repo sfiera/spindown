@@ -5,51 +5,12 @@
 #include <gba_systemcalls.h>
 #include <gba_video.h>
 #include <string.h>
+
 #include "gfx/orbs.h"
 #include "gfx/tiles.h"
+#include "levels.h"
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
-
-typedef struct level {
-    u8         w, h;
-    const char title[30];
-    const char data[14 * 14];
-} level_t;
-
-static level_t level_set[] = {
-    {
-        7,
-        7,
-        "BASIC 1",
-        "#######"
-        "#     #"
-        "#  a  #"
-        "#  #  #"
-        "#     #"
-        "#  A  #"
-        "#######",
-    },
-    {
-        14,
-        14,
-        "PLUS",
-        "....######...."
-        "....#    #...."
-        "....#    #...."
-        "....#    #...."
-        "#####    #####"
-        "##          ##"
-        "#A    #00   B#"
-        "#B     #    A#"
-        "##          ##"
-        "#####    #####"
-        "....#    #...."
-        "....#    #...."
-        "....#baba#...."
-        "....######....",
-    },
-    {},
-};
 
 IWRAM_CODE void interrupt() {
     REG_IF = IRQ_VBLANK;
