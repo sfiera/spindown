@@ -75,17 +75,17 @@ IWRAM_DATA s16 sin_table[256] = {
     -97,  -92,  -86,  -80,  -74,  -68,  -62,  -56,  -49,  -43,  -37,  -31,  -25,  -18,  -12,  -6,
 };
 
-typedef struct {
-    s8 x, y;
-    s8 color;
-} sprite_loc_t;
-IWRAM_DATA sprite_loc_t sprite_locs[128];
-IWRAM_DATA u8           sprite_count = 0;
+IWRAM_DATA u8 sprite_count = 0;
 
 typedef struct {
     u8   tile;
-    s8   sprite;
     bool supported : 1;
+    bool has_sprite : 1;
+    struct {
+        s8 x, y;
+        s8 index;
+        s8 color;
+    } sprite;
 } cell_t;
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
@@ -113,18 +113,20 @@ IWRAM_CODE void rotate(u8 angle) {
     bg2.x   = 12 * width * 0x100 - (cos * (2 * 120 - 1) + sin * (2 * 80 - 1));
     bg2.y   = 12 * height * 0x100 - (-sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
 
-    for (u8 i = 0; i < sprite_count; ++i) {
-        s8 x = sprite_locs[i].x, y = sprite_locs[i].y;
-        if (y != 127) {
-            shadow.sprites[i].attr0 = (74 - ((cos * y + sin * x) >> 8));
-            shadow.sprites[i].attr1 = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+    for (int i = 0; i < 256; ++i) {
+        const cell_t* cell = &level[i];
+        s8            x = cell->sprite.x, y = cell->sprite.y;
+        if (cell->has_sprite) {
+            shadow.sprites[cell->sprite.index].attr0 = (74 - ((cos * y + sin * x) >> 8));
+            shadow.sprites[cell->sprite.index].attr1 =
+                (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         }
     }
 }
 
 void set_tile(u8 x, u8 y, u8 value) {
-    level[(y << 4) | x].tile   = value;
-    level[(y << 4) | x].sprite = -1;
+    level[(y << 4) | x].tile       = value;
+    level[(y << 4) | x].has_sprite = false;
 
     x *= 3;
     y *= 3;
@@ -157,7 +159,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
             prev = cell;
             cell = &level[index];
             index += next_cell;
-            if (cell->sprite < 0) {
+            if (!cell->has_sprite) {
                 cell->supported = (cell->tile != 2);
             } else {
                 cell->supported = !prev || prev->supported;
@@ -188,23 +190,22 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
             prev = cell;
             cell = &level[index];
             index += next_cell;
-            if ((cell->sprite < 0) || cell->supported) {
+            if (!cell->has_sprite || cell->supported) {
                 continue;
             }
-            sprite_loc_t* loc = &sprite_locs[cell->sprite];
-            loc->x += dx;
-            loc->y += dy;
+            cell->sprite.x += dx;
+            cell->sprite.y += dy;
             if (!remainder) {
-                prev->sprite = cell->sprite;
-                cell->sprite = -1;
+                *prev            = *cell;
+                cell->has_sprite = false;
             }
         }
     }
 }
 
 IWRAM_CODE bool match_cells(const cell_t* a, const cell_t* b) {
-    int a_color = (a->sprite >= 0) ? sprite_locs[a->sprite].color : (a->tile - 4);
-    int b_color = (b->sprite >= 0) ? sprite_locs[b->sprite].color : (b->tile - 4);
+    int a_color = (a->has_sprite) ? a->sprite.color : (a->tile - 4);
+    int b_color = (b->has_sprite) ? b->sprite.color : (b->tile - 4);
     return (a_color >= 0) && (a_color == b_color);
 }
 
@@ -230,14 +231,14 @@ IWRAM_CODE bool match() {
             int     idx  = (y << 4) | x;
             cell_t* cell = &level[idx];
             if (!(match[y] & (1 << x))) {
-                if ((cell->tile >= 4) || (cell->sprite >= 0)) {
+                if ((cell->tile >= 4) || cell->has_sprite) {
                     done = false;
                 }
                 continue;
             }
-            if (cell->sprite >= 0) {
-                shadow.sprites[cell->sprite].attr0 = 191;
-                sprite_locs[cell->sprite].y        = 127;
+            if (cell->has_sprite) {
+                shadow.sprites[cell->sprite.index].attr0 = 191;
+                cell->sprite.y                           = 127;
             }
             set_tile(x, y, 2);
         }
@@ -247,11 +248,13 @@ IWRAM_CODE bool match() {
 
 void set_orb(u8 x, u8 y, s8 value) {
     set_tile(x, y, 2);
-    u8 idx                     = sprite_count++;
-    level[(y << 4) | x].sprite = idx;
-    sprite_locs[idx].x         = 6 * width - 6 - x * 12;
-    sprite_locs[idx].y         = 6 * width - 6 - y * 12;
-    sprite_locs[idx].color     = value;
+    u8      idx        = sprite_count++;
+    cell_t* cell       = &level[(y << 4) | x];
+    cell->has_sprite   = true;
+    cell->sprite.index = idx;
+    cell->sprite.x     = 6 * width - 6 - x * 12;
+    cell->sprite.y     = 6 * width - 6 - y * 12;
+    cell->sprite.color = value;
     if (value >= 0) {
         shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(value);
     } else {
@@ -266,9 +269,7 @@ void play_level(int lvl) {
         OAM[i].attr0            = 191;
         shadow.sprites[i].attr0 = 191;
     }
-    for (u16 i = 0; i < 256; ++i) {
-        level[i].sprite = -1;
-    }
+    bzero(level, sizeof(level));
     bzero(shadow.tilemap, sizeof(shadow.tilemap));
 
     const char* tiles = level_set[lvl].data;
