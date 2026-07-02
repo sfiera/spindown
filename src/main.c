@@ -39,15 +39,20 @@ IWRAM_DATA s16 sin_table[256] = {
 IWRAM_DATA u8 sprite_count = 0;
 
 typedef struct {
-    u8   tile;
-    bool supported : 1;
-    bool has_sprite : 1;
+    u8 tile;
+
+    u8 color : 3;
+    u8 has_sprite : 1;
+    u8 supported : 1;
+
     struct {
         s8 x, y;
         s8 index;
-        s8 color;
     } sprite;
 } cell_t;
+
+IWRAM_DATA cell_t tile_empty = {.tile = 2};
+
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
 
@@ -86,13 +91,15 @@ IWRAM_CODE void rotate(u8 angle) {
 }
 
 void set_tile(u8 x, u8 y, u8 value) {
-    level[(y << 4) | x].tile       = value;
-    level[(y << 4) | x].has_sprite = false;
+    cell_t* cell     = &level[(y << 4) | x];
+    cell->tile       = value;
+    cell->has_sprite = false;
+    cell->color      = (value >= 8) ? (value - 7) : 0;
 
     x *= 3;
     y *= 3;
 
-    const u8* src = &tilesMetaTiles[value * 9];
+    const u8* src = &tilesMetaTiles[tilesMetaMap[value * 2] * 9];
     for (u8 yy = y; yy < y + 3; ++yy) {
         for (u8 xx = x; xx < x + 3; ++xx) {
             shadow.tilemap[(yy << 6) | xx] = *(src++);
@@ -157,17 +164,11 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
             cell->sprite.x += dx;
             cell->sprite.y += dy;
             if (!remainder) {
-                *prev            = *cell;
-                cell->has_sprite = false;
+                *prev = *cell;
+                *cell = tile_empty;
             }
         }
     }
-}
-
-IWRAM_CODE bool match_cells(const cell_t* a, const cell_t* b) {
-    int a_color = (a->has_sprite) ? a->sprite.color : (a->tile - 4);
-    int b_color = (b->has_sprite) ? b->sprite.color : (b->tile - 4);
-    return (a_color >= 0) && (a_color == b_color);
 }
 
 IWRAM_CODE bool match() {
@@ -176,10 +177,13 @@ IWRAM_CODE bool match() {
         for (int x = 0; x < 13; ++x) {
             int     idx = (y << 4) | x;
             cell_t *a = &level[idx], *b = &level[idx + 1], *c = &level[idx + 16];
-            if (match_cells(a, b)) {
+            if (!a->color) {
+                continue;
+            }
+            if (a->color == b->color) {
                 match[y] = (3 << x);
             }
-            if (match_cells(a, c)) {
+            if (a->color == c->color) {
                 match[y]     = (1 << x);
                 match[y + 1] = (1 << x);
             }
@@ -192,9 +196,7 @@ IWRAM_CODE bool match() {
             int     idx  = (y << 4) | x;
             cell_t* cell = &level[idx];
             if (!(match[y] & (1 << x))) {
-                if ((cell->tile >= 4) || cell->has_sprite) {
-                    done = false;
-                }
+                done = done && !cell->color;
                 continue;
             }
             if (cell->has_sprite) {
@@ -207,17 +209,17 @@ IWRAM_CODE bool match() {
     return done;
 }
 
-void set_orb(u8 x, u8 y, s8 value) {
+void set_orb(u8 x, u8 y, u8 color) {
     set_tile(x, y, 2);
     u8      idx        = sprite_count++;
     cell_t* cell       = &level[(y << 4) | x];
+    cell->color        = color;
     cell->has_sprite   = true;
     cell->sprite.index = idx;
     cell->sprite.x     = 6 * width - 6 - x * 12;
     cell->sprite.y     = 6 * width - 6 - y * 12;
-    cell->sprite.color = value;
-    if (value >= 0) {
-        shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(value);
+    if (color >= 1) {
+        shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(color - 1);
     } else {
         int links                 = 0;
         shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
@@ -242,11 +244,17 @@ void play_level(int lvl) {
                 case '.': set_tile(x, y, 0); break;
                 case '#': set_tile(x, y, 1); break;
                 case ' ': set_tile(x, y, 2); break;
-                case '0': set_orb(x, y, -1); break;
-                case 'A': set_tile(x, y, 4); break;
-                case 'B': set_tile(x, y, 5); break;
-                case 'a': set_orb(x, y, 0); break;
-                case 'b': set_orb(x, y, 1); break;
+                case '0': set_orb(x, y, 0); break;
+                case 'A': set_tile(x, y, 8); break;
+                case 'B': set_tile(x, y, 9); break;
+                case 'C': set_tile(x, y, 10); break;
+                case 'D': set_tile(x, y, 11); break;
+                case 'E': set_tile(x, y, 12); break;
+                case 'a': set_orb(x, y, 1); break;
+                case 'b': set_orb(x, y, 2); break;
+                case 'c': set_orb(x, y, 3); break;
+                case 'd': set_orb(x, y, 4); break;
+                case 'e': set_orb(x, y, 5); break;
             }
         }
     }
@@ -326,8 +334,8 @@ IWRAM_CODE int main() {
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = tilesPal[i];
     }
-    for (size_t i = 0; i < orbsPalLen / 2; ++i) {
-        OBJ_COLORS[i] = orbsPal[i];
+    for (size_t i = 0; i < tilesPalLen / 2; ++i) {
+        OBJ_COLORS[i] = tilesPal[i];
     }
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
 
