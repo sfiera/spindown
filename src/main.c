@@ -61,7 +61,8 @@ IWRAM_DATA struct {
         OBJATTR   sprites[128];
         OBJAFFINE affine[32];
     };
-    u8 tilemap[56 * 64];
+    u8  tilemap[56 * 64];
+    u16 palette[tilesPalLen / 2];
 } shadow;
 
 IWRAM_DATA struct {
@@ -78,6 +79,17 @@ IWRAM_CODE void rotate(u8 angle) {
     bg2.pd  = 2 * cos;
     bg2.x   = 12 * width * 0x100 - (cos * (2 * 120 - 1) + sin * (2 * 80 - 1));
     bg2.y   = 12 * height * 0x100 - (-sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
+
+    u8 a4 = (angle >> 6);
+    u8 a8 = (angle >> 5);
+    for (int i = 0; i < 80; i += 16) {
+        for (int j = 0; j < 4; ++j) {
+            shadow.palette[i + 2 + j] = tilesPal[i + 2 + ((a4 + j) % 4)];
+        }
+        for (int j = 0; j < 8; ++j) {
+            shadow.palette[i + 6 + j] = tilesPal[i + 6 + ((a8 + j) % 8)];
+        }
+    }
 
     for (int i = 0; i < 256; ++i) {
         const cell_t* cell = &level[i];
@@ -222,7 +234,7 @@ void set_orb(u8 x, u8 y, u8 color) {
         shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(color - 1);
     } else {
         int links                 = 0;
-        shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(0);
+        shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
     }
 }
 
@@ -317,6 +329,7 @@ void play_level(int lvl) {
         DMA3COPY(&shadow.tilemap[896], MAP_BASE_ADR(8) + 896, 224 | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.tilemap[1792], MAP_BASE_ADR(8) + 1792, 224 | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.palette, BG_COLORS, (tilesPalLen / 4) | DMA32 | DMA_IMMEDIATE);
     }
 }
 
@@ -332,10 +345,7 @@ IWRAM_CODE int main() {
     }
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
-        BG_COLORS[i] = tilesPal[i];
-    }
-    for (size_t i = 0; i < tilesPalLen / 2; ++i) {
-        OBJ_COLORS[i] = tilesPal[i];
+        BG_COLORS[i] = OBJ_COLORS[i] = shadow.palette[i] = tilesPal[i];
     }
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
 
