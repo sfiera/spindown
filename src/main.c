@@ -229,7 +229,7 @@ void set_orb(u8 x, u8 y, u8 color) {
     cell->has_sprite   = true;
     cell->sprite.index = idx;
     cell->sprite.x     = 6 * width - 6 - x * 12;
-    cell->sprite.y     = 6 * width - 6 - y * 12;
+    cell->sprite.y     = 6 * height - 6 - y * 12;
     if (color >= 1) {
         shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(color - 1);
     } else {
