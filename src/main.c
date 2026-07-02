@@ -284,6 +284,9 @@ bool play_level(int lvl) {
     u16 last_keys = REG_KEYINPUT;
     s16 turning   = 0;
     u16 falling   = 0;
+    if (check_gravity(angle)) {
+        falling = 6;
+    }
     while (true) {
         if (turning) {
             angle += turning;
