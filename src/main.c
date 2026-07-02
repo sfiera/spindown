@@ -354,9 +354,11 @@ IWRAM_CODE int main() {
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
 
     int i = 0;
-    while (level_set[i].w) {
+    while (true) {
         if (play_level(i)) {
-            ++i;
+            if (!level_set[++i].w) {
+                i = 0;
+            }
         }
     }
 }
