@@ -241,7 +241,6 @@ void set_orb(u8 x, u8 y, u8 color) {
 bool play_level(int lvl) {
     sprite_count = 0;
     for (size_t i = 0; i < 128; ++i) {
-        OAM[i].attr0            = 191;
         shadow.sprites[i].attr0 = 191;
     }
     bzero(level, sizeof(level));
@@ -353,6 +352,9 @@ IWRAM_CODE int main() {
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = OBJ_COLORS[i] = shadow.palette[i] = tilesPal[i];
+    }
+    for (size_t i = 0; i < 128; ++i) {
+        OAM[i].attr0 = 191;
     }
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
 
