@@ -238,7 +238,7 @@ void set_orb(u8 x, u8 y, u8 color) {
     }
 }
 
-void play_level(int lvl) {
+bool play_level(int lvl) {
     sprite_count = 0;
     for (size_t i = 0; i < 128; ++i) {
         OAM[i].attr0            = 191;
@@ -301,7 +301,7 @@ void play_level(int lvl) {
                 if (check_gravity(angle)) {
                     falling = 6;
                 } else if (match()) {
-                    return;
+                    return true;
                 } else if (check_gravity(angle)) {
                     falling = 6;
                 }
@@ -312,6 +312,10 @@ void play_level(int lvl) {
                 turning = -4;
             } else if (press & (KEY_R | KEY_RIGHT)) {
                 turning = +4;
+            } else if (press & (KEY_SELECT)) {
+                return true;
+            } else if (press & (KEY_START)) {
+                return false;
             }
             last_keys = REG_KEYINPUT;
         }
@@ -351,6 +355,8 @@ IWRAM_CODE int main() {
 
     int i = 0;
     while (level_set[i].w) {
-        play_level(i++);
+        if (play_level(i)) {
+            ++i;
+        }
     }
 }
