@@ -92,7 +92,7 @@ void set_tile(u8 x, u8 y, u8 value) {
     x *= 3;
     y *= 3;
 
-    const u8* src = &tilesMap[value * 9];
+    const u8* src = &tilesMetaTiles[value * 9];
     for (u8 yy = y; yy < y + 3; ++yy) {
         for (u8 xx = x; xx < x + 3; ++xx) {
             shadow.tilemap[(yy << 6) | xx] = *(src++);
