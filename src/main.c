@@ -46,7 +46,6 @@ typedef struct {
 
     struct {
         s8 x, y;
-        s8 index;
     } sprite;
 } cell_t;
 
@@ -90,14 +89,25 @@ IWRAM_CODE void rotate(u8 angle) {
         }
     }
 
+    int idx = 0;
     for (int i = 0; i < 256; ++i) {
         const cell_t* cell = &level[i];
         s8            x = cell->sprite.x, y = cell->sprite.y;
-        if (cell->has_sprite) {
-            shadow.sprites[cell->sprite.index].attr0 = (74 - ((cos * y + sin * x) >> 8));
-            shadow.sprites[cell->sprite.index].attr1 =
-                (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        if (!cell->has_sprite) {
+            continue;
         }
+        shadow.sprites[idx].attr0 = (74 - ((cos * y + sin * x) >> 8));
+        shadow.sprites[idx].attr1 = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        if (cell->color >= 1) {
+            shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
+        } else {
+            int links                 = 0;
+            shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
+        }
+        ++idx;
+    }
+    while (idx < sprite_count) {
+        shadow.sprites[idx++].attr0 = 191;
     }
 }
 
@@ -210,10 +220,6 @@ IWRAM_CODE bool match() {
                 done = done && !cell->color;
                 continue;
             }
-            if (cell->has_sprite) {
-                shadow.sprites[cell->sprite.index].attr0 = 191;
-                cell->sprite.y                           = 127;
-            }
             set_tile(x, y, 0);
         }
     }
@@ -222,19 +228,12 @@ IWRAM_CODE bool match() {
 
 void set_orb(u8 x, u8 y, u8 color) {
     set_tile(x, y, 0);
-    u8      idx        = sprite_count++;
-    cell_t* cell       = &level[(y << 4) | x];
-    cell->color        = color;
-    cell->has_sprite   = true;
-    cell->sprite.index = idx;
-    cell->sprite.x     = 6 * width - 6 - x * 12;
-    cell->sprite.y     = 6 * height - 6 - y * 12;
-    if (color >= 1) {
-        shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(color - 1);
-    } else {
-        int links                 = 0;
-        shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
-    }
+    ++sprite_count;
+    cell_t* cell     = &level[(y << 4) | x];
+    cell->color      = color;
+    cell->has_sprite = true;
+    cell->sprite.x   = 6 * width - 6 - x * 12;
+    cell->sprite.y   = 6 * height - 6 - y * 12;
 }
 
 bool play_level(int lvl) {
@@ -297,7 +296,6 @@ bool play_level(int lvl) {
             }
         } else if (falling) {
             fall(angle, --falling);
-            rotate(angle);
             if (!falling) {
                 if (check_gravity(angle)) {
                     falling = 6;
@@ -307,6 +305,7 @@ bool play_level(int lvl) {
                     falling = 6;
                 }
             }
+            rotate(angle);
         } else {
             u16 press = (~REG_KEYINPUT & last_keys);
             if (press & (KEY_L | KEY_LEFT)) {
