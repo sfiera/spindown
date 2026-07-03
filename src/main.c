@@ -127,7 +127,7 @@ IWRAM_CODE void rotate(u8 angle) {
         if (cell->color >= 1) {
             s->attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
         } else {
-            u8 links = (((cell->links | (cell->links << 4)) << a4) >> 4) & 0xF;
+            u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
             s->attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
         }
     }
@@ -159,44 +159,71 @@ void set_tile(loc_t l, u8 value, u8 links) {
     fill(l, value);
 }
 
-IWRAM_CODE bool check_gravity_from(loc_t l, s8 up, s8 side) {
-    bool    any = false;
+IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link) {
     cell_t *prev, *cell = NULL;
     while (loc_valid(l)) {
         prev = cell;
         cell = &level[l.index];
-        l.index += up;
-        if (!cell->slides) {
-            cell->supported = cell->solid;
-        } else {
-            cell->supported = !prev || prev->supported;
-            any             = any || !cell->supported;
+        if (cell->slides && (!prev || prev->supported)) {
+            cell->supported = true;
+            if (cell->links & link) {
+                loc_t l2 = {.index = l.index + right};
+                if (loc_valid(l2) && !level[l2.index].supported) {
+                    level[l2.index].supported = true;
+                    check_gravity_column(l2, up, right, link);
+                }
+            }
+            if (cell->links & (((link << 1) | (link >> 3)) & 0xF)) {
+                loc_t l2 = {.index = l.index - up};
+                if (loc_valid(l2) && !level[l2.index].supported) {
+                    level[l2.index].supported = true;
+                    check_gravity_column(l2, up, right, link);
+                }
+            }
+            if (cell->links & (((link << 2) | (link >> 2)) & 0xF)) {
+                loc_t l2 = {.index = l.index - right};
+                if (loc_valid(l2) && !level[l2.index].supported) {
+                    level[l2.index].supported = true;
+                    check_gravity_column(l2, up, right, link);
+                }
+            }
         }
+        l.index += up;
     }
-    return any;
 }
 
 IWRAM_CODE bool check_gravity(u8 angle) {
     loc_t l;
-    s8    up, side;
-    switch (angle >> 6) {
-        case ANGLE_UP: l.x = l.y = 13, side = -1, up = -16; break;
-        case ANGLE_RT: l.x = l.y = 0, side = +16, up = +1; break;
-        case ANGLE_DN: l.x = l.y = 0, side = +1, up = +16; break;
-        case ANGLE_LT: l.x = l.y = 13, side = -16, up = -1; break;
+    for (l.y = 0; l.y < 14; ++l.y) {
+        for (l.x = 0; l.x < 14; ++l.x) {
+            level[l.index].supported = level[l.index].solid && !level[l.index].slides;
+        }
     }
 
-    bool any = false;
-    while (loc_valid(l)) {
-        if (check_gravity_from(l, up, side)) {
-            any = true;
-        }
-        l.index += side;
+    s8 up, right;
+    u8 link;
+    switch (angle >> 6) {
+        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, link = LINK_RT; break;
+        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, link = LINK_DN; break;
+        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, link = LINK_LT; break;
+        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, link = LINK_UP; break;
     }
-    return any;
+    while (loc_valid(l)) {
+        check_gravity_column(l, up, right, link);
+        l.index += right;
+    }
+
+    for (l.y = 0; l.y < 14; ++l.y) {
+        for (l.x = 0; l.x < 14; ++l.x) {
+            if (level[l.index].slides && !level[l.index].supported) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
-IWRAM_CODE void fall_from(loc_t l, u8 remainder, s8 up, s8 side, s8 dx, s8 dy) {
+IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up, s8 dx, s8 dy) {
     cell_t *prev, *cell = NULL;
     while (loc_valid(l)) {
         prev = cell;
@@ -226,20 +253,20 @@ IWRAM_CODE void fall_from(loc_t l, u8 remainder, s8 up, s8 side, s8 dx, s8 dy) {
     }
 }
 
-IWRAM_CODE void fall(u8 angle, u8 remainder) {
+IWRAM_CODE void drop(u8 angle, u8 remainder) {
     loc_t l;
-    s8    up, side;
+    s8    up, right;
     s8    dx = 0, dy = 0;
     switch (angle >> 6) {
-        case ANGLE_UP: l.x = l.y = 13, side = -1, up = -16, dy = -2; break;
-        case ANGLE_RT: l.x = l.y = 0, side = +16, up = +1, dx = +2; break;
-        case ANGLE_DN: l.x = l.y = 0, side = +1, up = +16, dy = +2; break;
-        case ANGLE_LT: l.x = l.y = 13, side = -16, up = -1, dx = -2; break;
+        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, dy = -2; break;
+        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, dx = +2; break;
+        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, dy = +2; break;
+        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, dx = -2; break;
     }
 
     while (loc_valid(l)) {
-        fall_from(l, remainder, up, side, dx, dy);
-        l.index += side;
+        drop_column(l, remainder, up, dx, dy);
+        l.index += right;
     }
 }
 
@@ -354,7 +381,7 @@ bool play_level(int lvl) {
                 }
             }
         } else if (falling) {
-            fall(angle, --falling);
+            drop(angle, --falling);
             if (!falling) {
                 if (check_gravity(angle)) {
                     falling = 6;
