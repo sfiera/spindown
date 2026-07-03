@@ -51,7 +51,7 @@ typedef struct {
     } sprite;
 } cell_t;
 
-IWRAM_DATA cell_t tile_empty = {.tile = 2};
+IWRAM_DATA cell_t tile_empty = {};
 
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
@@ -140,7 +140,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
             cell = &level[index];
             index += next_cell;
             if (!cell->has_sprite) {
-                cell->supported = (cell->tile != 2);
+                cell->supported = (cell->tile != 0);
             } else {
                 cell->supported = !prev || prev->supported;
                 any             = any || !cell->supported;
@@ -215,14 +215,14 @@ IWRAM_CODE bool match() {
                 shadow.sprites[cell->sprite.index].attr0 = 191;
                 cell->sprite.y                           = 127;
             }
-            set_tile(x, y, 2);
+            set_tile(x, y, 0);
         }
     }
     return done;
 }
 
 void set_orb(u8 x, u8 y, u8 color) {
-    set_tile(x, y, 2);
+    set_tile(x, y, 0);
     u8      idx        = sprite_count++;
     cell_t* cell       = &level[(y << 4) | x];
     cell->color        = color;
@@ -252,9 +252,9 @@ bool play_level(int lvl) {
     for (u8 y = 0; y < level_set[lvl].h; ++y) {
         for (u8 x = 0; x < level_set[lvl].w; ++x) {
             switch (*(tiles++)) {
-                case '.': set_tile(x, y, 0); break;
+                case '.': set_tile(x, y, 2); break;
                 case '#': set_tile(x, y, 1); break;
-                case ' ': set_tile(x, y, 2); break;
+                case ' ': set_tile(x, y, 0); break;
                 case '0': set_orb(x, y, 0); break;
                 case 'A': set_tile(x, y, 8); break;
                 case 'B': set_tile(x, y, 9); break;
