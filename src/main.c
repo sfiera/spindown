@@ -46,6 +46,20 @@ typedef union {
 
 static inline bool loc_valid(loc_t l) { return (l.x < 14) && (l.y < 14); }
 
+enum {
+    ANGLE_UP = 0,
+    ANGLE_RT = 1,
+    ANGLE_DN = 2,
+    ANGLE_LT = 3,
+};
+
+enum {
+    LINK_UP = 1 << ANGLE_UP,
+    LINK_RT = 1 << ANGLE_RT,
+    LINK_DN = 1 << ANGLE_DN,
+    LINK_LT = 1 << ANGLE_LT,
+};
+
 typedef struct {
     u8 color : 3;
     u8 solid : 1;
@@ -83,20 +97,20 @@ IWRAM_CODE void rotate(u8 angle) {
     s16 cos = sin_table[(angle + 64) & 0xFF];
     s16 sin = sin_table[angle];
     bg2.pa  = 2 * cos;
-    bg2.pb  = 2 * sin;
-    bg2.pc  = 2 * -sin;
+    bg2.pb  = 2 * -sin;
+    bg2.pc  = 2 * sin;
     bg2.pd  = 2 * cos;
-    bg2.x   = 12 * width * 0x100 - (cos * (2 * 120 - 1) + sin * (2 * 80 - 1));
-    bg2.y   = 12 * height * 0x100 - (-sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
+    bg2.x   = 12 * width * 0x100 - (cos * (2 * 120 - 1) + -sin * (2 * 80 - 1));
+    bg2.y   = 12 * height * 0x100 - (sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
 
     u8 a4 = (angle >> 6);
     u8 a8 = (angle >> 5);
     for (int i = 0; i < 96; i += 16) {
         for (int j = 0; j < 4; ++j) {
-            shadow.palette[i + 2 + j] = tilesPal[i + 2 + ((a4 + j) % 4)];
+            shadow.palette[i + 2 + j] = tilesPal[i + 2 + ((j + 4 - a4) % 4)];
         }
         for (int j = 0; j < 8; ++j) {
-            shadow.palette[i + 6 + j] = tilesPal[i + 6 + ((a8 + j) % 8)];
+            shadow.palette[i + 6 + j] = tilesPal[i + 6 + ((j + 8 - a8) % 8)];
         }
     }
 
@@ -108,8 +122,8 @@ IWRAM_CODE void rotate(u8 angle) {
             continue;
         }
         OBJATTR* s = &shadow.sprites[idx++];
-        s->attr0   = (74 - ((cos * y + sin * x) >> 8));
-        s->attr1   = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        s->attr0   = (74 - ((cos * y + -sin * x) >> 8));
+        s->attr1   = (114 - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color >= 1) {
             s->attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
         } else {
@@ -166,10 +180,10 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     loc_t l;
     s8    up, side;
     switch (angle >> 6) {
-        case 0: l.x = l.y = 13, side = -1, up = -16; break;
-        case 1: l.x = l.y = 13, side = -16, up = -1; break;
-        case 2: l.x = l.y = 0, side = +1, up = +16; break;
-        case 3: l.x = l.y = 0, side = +16, up = +1; break;
+        case ANGLE_UP: l.x = l.y = 13, side = -1, up = -16; break;
+        case ANGLE_RT: l.x = l.y = 0, side = +16, up = +1; break;
+        case ANGLE_DN: l.x = l.y = 0, side = +1, up = +16; break;
+        case ANGLE_LT: l.x = l.y = 13, side = -16, up = -1; break;
     }
 
     bool any = false;
@@ -217,10 +231,10 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
     s8    up, side;
     s8    dx = 0, dy = 0;
     switch (angle >> 6) {
-        case 0: l.x = l.y = 13, side = -1, up = -16, dy = -2; break;
-        case 1: l.x = l.y = 13, side = -16, up = -1, dx = -2; break;
-        case 2: l.x = l.y = 0, side = +1, up = +16, dy = +2; break;
-        case 3: l.x = l.y = 0, side = +16, up = +1, dx = +2; break;
+        case ANGLE_UP: l.x = l.y = 13, side = -1, up = -16, dy = -2; break;
+        case ANGLE_RT: l.x = l.y = 0, side = +16, up = +1, dx = +2; break;
+        case ANGLE_DN: l.x = l.y = 0, side = +1, up = +16, dy = +2; break;
+        case ANGLE_LT: l.x = l.y = 13, side = -16, up = -1, dx = -2; break;
     }
 
     while (loc_valid(l)) {
@@ -302,10 +316,10 @@ bool play_level(int lvl) {
                 case 'd': set_orb(l, 4); break;
                 case 'e': set_orb(l, 5); break;
                 default:
-                    links = (((y > 0) && (*tiles == tiles[-width])) ? 4 : 0) |
-                            (((x > 0) && (*tiles == tiles[-1])) ? 2 : 0) |
-                            (((y < height - 1) && (*tiles == tiles[width])) ? 1 : 0) |
-                            (((x < width - 1) && (*tiles == tiles[1])) ? 8 : 0);
+                    links = (((y > 0) && (*tiles == tiles[-width])) ? LINK_UP : 0) |
+                            (((x < width - 1) && (*tiles == tiles[1])) ? LINK_RT : 0) |
+                            (((y < height - 1) && (*tiles == tiles[width])) ? LINK_DN : 0) |
+                            (((x > 0) && (*tiles == tiles[-1])) ? LINK_LT : 0);
                     set_tile(l, 16 | links, links);
                     break;
             }
@@ -354,9 +368,9 @@ bool play_level(int lvl) {
         } else {
             u16 press = (~REG_KEYINPUT & last_keys);
             if (press & (KEY_L | KEY_LEFT)) {
-                turning = -4;
-            } else if (press & (KEY_R | KEY_RIGHT)) {
                 turning = +4;
+            } else if (press & (KEY_R | KEY_RIGHT)) {
+                turning = -4;
             } else if (press & (KEY_SELECT)) {
                 return true;
             } else if (press & (KEY_START)) {
