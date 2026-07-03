@@ -36,12 +36,13 @@ IWRAM_DATA s16 sin_table[256] = {
     -97,  -92,  -86,  -80,  -74,  -68,  -62,  -56,  -49,  -43,  -37,  -31,  -25,  -18,  -12,  -6,
 };
 
-IWRAM_DATA u8 sprite_count = 0;
-
 typedef struct {
     u8 color : 3;
-    u8 has_sprite : 1;
     u8 solid : 1;
+    u8 links : 4;
+
+    u8 slides : 1;
+    u8 has_sprite : 1;
     u8 supported : 1;
 
     struct {
@@ -80,7 +81,7 @@ IWRAM_CODE void rotate(u8 angle) {
 
     u8 a4 = (angle >> 6);
     u8 a8 = (angle >> 5);
-    for (int i = 0; i < 80; i += 16) {
+    for (int i = 0; i < 96; i += 16) {
         for (int j = 0; j < 4; ++j) {
             shadow.palette[i + 2 + j] = tilesPal[i + 2 + ((a4 + j) % 4)];
         }
@@ -96,27 +97,22 @@ IWRAM_CODE void rotate(u8 angle) {
         if (!cell->has_sprite) {
             continue;
         }
-        shadow.sprites[idx].attr0 = (74 - ((cos * y + sin * x) >> 8));
-        shadow.sprites[idx].attr1 = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        OBJATTR* s = &shadow.sprites[idx++];
+        s->attr0   = (74 - ((cos * y + sin * x) >> 8));
+        s->attr1   = (114 - ((-sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color >= 1) {
-            shadow.sprites[idx].attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
+            s->attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
         } else {
-            int links                 = 0;
-            shadow.sprites[idx].attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
+            u8 links = (((cell->links | (cell->links << 4)) << a4) >> 4) & 0xF;
+            s->attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
         }
-        ++idx;
     }
-    while (idx < sprite_count) {
+    while (idx < 128) {
         shadow.sprites[idx++].attr0 = 191;
     }
 }
 
-void set_tile(u8 x, u8 y, u8 value) {
-    cell_t* cell     = &level[(y << 4) | x];
-    cell->solid      = value != 0;
-    cell->has_sprite = false;
-    cell->color      = (value >= 8) ? (value - 7) : 0;
-
+void fill(u8 x, u8 y, u8 value) {
     x *= 3;
     y *= 3;
 
@@ -126,6 +122,35 @@ void set_tile(u8 x, u8 y, u8 value) {
             shadow.tilemap[(yy << 6) | xx] = *(src++);
         }
     }
+}
+
+void set_tile(u8 x, u8 y, u8 value, u8 links) {
+    int     idx = idx = (y << 4) | x;
+    cell_t* cell      = &level[idx];
+    cell->color       = (8 <= value && value < 13) ? (value - 7) : 0;
+    cell->solid       = value != 0;
+    cell->links       = links;
+    cell->slides      = value >= 16;
+    cell->has_sprite  = false;
+
+    fill(x, y, value);
+}
+
+IWRAM_CODE bool check_gravity_from(u8 index, u8 up, u8 side) {
+    bool    any = false;
+    cell_t *prev, *cell = NULL;
+    for (int i = 0; i < 14; ++i) {
+        prev = cell;
+        cell = &level[index];
+        index += up;
+        if (!cell->slides) {
+            cell->supported = cell->solid;
+        } else {
+            cell->supported = !prev || prev->supported;
+            any             = any || !cell->supported;
+        }
+    }
+    return any;
 }
 
 IWRAM_CODE bool check_gravity(u8 angle) {
@@ -141,20 +166,10 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     bool any  = false;
     u8   head = start;
     for (int i = 0; i < 14; ++i) {
-        u8 index = head;
-        head += next_row;
-        cell_t *prev, *cell = NULL;
-        for (int j = 0; j < 14; ++j) {
-            prev = cell;
-            cell = &level[index];
-            index += next_cell;
-            if (!cell->has_sprite) {
-                cell->supported = cell->solid;
-            } else {
-                cell->supported = !prev || prev->supported;
-                any             = any || !cell->supported;
-            }
+        if (check_gravity_from(head, next_cell, next_row)) {
+            any = true;
         }
+        head += next_row;
     }
     return any;
 }
@@ -172,23 +187,38 @@ IWRAM_CODE void fall(u8 angle, u8 remainder) {
 
     u8 head = start;
     for (int i = 0; i < 14; ++i) {
-        u8 index = head;
-        head += next_row;
+        u8      index = head;
         cell_t *prev, *cell = NULL;
         for (int j = 0; j < 14; ++j) {
             prev = cell;
             cell = &level[index];
-            index += next_cell;
-            if (!cell->has_sprite || cell->supported) {
+            if (!cell->slides || cell->supported) {
+                index += next_cell;
                 continue;
+            }
+            if (!cell->has_sprite) {
+                u8 x             = ((index >> 0) & 0xF);
+                u8 y             = ((index >> 4) & 0xF);
+                cell->has_sprite = true;
+                cell->sprite.x   = 6 * width - 6 - x * 12;
+                cell->sprite.y   = 6 * height - 6 - y * 12;
+                fill(x, y, 0);
             }
             cell->sprite.x += dx;
             cell->sprite.y += dy;
             if (!remainder) {
                 *prev = *cell;
                 *cell = tile_empty;
+                if (!prev->color) {
+                    u8 x             = (((index - next_cell) >> 0) & 0xF);
+                    u8 y             = (((index - next_cell) >> 4) & 0xF);
+                    prev->has_sprite = false;
+                    fill(x, y, 16 | prev->links);
+                }
             }
+            index += next_cell;
         }
+        head += next_row;
     }
 }
 
@@ -220,24 +250,23 @@ IWRAM_CODE bool match() {
                 done = done && !cell->color;
                 continue;
             }
-            set_tile(x, y, 0);
+            set_tile(x, y, 0, 0);
         }
     }
     return done;
 }
 
 void set_orb(u8 x, u8 y, u8 color) {
-    set_tile(x, y, 0);
-    ++sprite_count;
+    set_tile(x, y, 0, 0);
     cell_t* cell     = &level[(y << 4) | x];
     cell->color      = color;
     cell->has_sprite = true;
+    cell->slides     = true;
     cell->sprite.x   = 6 * width - 6 - x * 12;
     cell->sprite.y   = 6 * height - 6 - y * 12;
 }
 
 bool play_level(int lvl) {
-    sprite_count = 0;
     for (size_t i = 0; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
@@ -247,24 +276,32 @@ bool play_level(int lvl) {
     const char* tiles = level_set[lvl].data;
     width             = level_set[lvl].w;
     height            = level_set[lvl].h;
-    for (u8 y = 0; y < level_set[lvl].h; ++y) {
-        for (u8 x = 0; x < level_set[lvl].w; ++x) {
-            switch (*(tiles++)) {
-                case '.': set_tile(x, y, 2); break;
-                case '#': set_tile(x, y, 1); break;
-                case ' ': set_tile(x, y, 0); break;
-                case '0': set_orb(x, y, 0); break;
-                case 'A': set_tile(x, y, 8); break;
-                case 'B': set_tile(x, y, 9); break;
-                case 'C': set_tile(x, y, 10); break;
-                case 'D': set_tile(x, y, 11); break;
-                case 'E': set_tile(x, y, 12); break;
+    for (u8 y = 0; y < height; ++y) {
+        for (u8 x = 0; x < width; ++x) {
+            u8 links = 0;
+            switch (*tiles) {
+                case '.': set_tile(x, y, 2, 0); break;
+                case '#': set_tile(x, y, 1, 0); break;
+                case ' ': set_tile(x, y, 0, 0); break;
+                case 'A': set_tile(x, y, 8, 0); break;
+                case 'B': set_tile(x, y, 9, 0); break;
+                case 'C': set_tile(x, y, 10, 0); break;
+                case 'D': set_tile(x, y, 11, 0); break;
+                case 'E': set_tile(x, y, 12, 0); break;
                 case 'a': set_orb(x, y, 1); break;
                 case 'b': set_orb(x, y, 2); break;
                 case 'c': set_orb(x, y, 3); break;
                 case 'd': set_orb(x, y, 4); break;
                 case 'e': set_orb(x, y, 5); break;
+                default:
+                    links = (((y > 0) && (*tiles == tiles[-width])) ? 4 : 0) |
+                            (((x > 0) && (*tiles == tiles[-1])) ? 2 : 0) |
+                            (((y < height - 1) && (*tiles == tiles[width])) ? 1 : 0) |
+                            (((x < width - 1) && (*tiles == tiles[1])) ? 8 : 0);
+                    set_tile(x, y, 16 | links, links);
+                    break;
             }
+            ++tiles;
         }
     }
 
