@@ -39,10 +39,9 @@ IWRAM_DATA s16 sin_table[256] = {
 IWRAM_DATA u8 sprite_count = 0;
 
 typedef struct {
-    u8 tile;
-
     u8 color : 3;
     u8 has_sprite : 1;
+    u8 solid : 1;
     u8 supported : 1;
 
     struct {
@@ -104,7 +103,7 @@ IWRAM_CODE void rotate(u8 angle) {
 
 void set_tile(u8 x, u8 y, u8 value) {
     cell_t* cell     = &level[(y << 4) | x];
-    cell->tile       = value;
+    cell->solid      = value != 0;
     cell->has_sprite = false;
     cell->color      = (value >= 8) ? (value - 7) : 0;
 
@@ -140,7 +139,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
             cell = &level[index];
             index += next_cell;
             if (!cell->has_sprite) {
-                cell->supported = (cell->tile != 0);
+                cell->supported = cell->solid;
             } else {
                 cell->supported = !prev || prev->supported;
                 any             = any || !cell->supported;
