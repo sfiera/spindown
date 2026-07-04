@@ -68,6 +68,7 @@ typedef struct {
     u8 slides : 1;
     u8 has_sprite : 1;
     u8 supported : 1;
+    u8 matched : 1;
 
     struct {
         s8 x, y;
@@ -93,7 +94,7 @@ IWRAM_DATA struct {
     s32 x, y;
 } bg2;
 
-IWRAM_CODE void rotate(u8 angle) {
+IWRAM_CODE void rotate(u8 angle, u8 matching) {
     s16 cos = sin_table[(angle + 64) & 0xFF];
     s16 sin = sin_table[angle];
     bg2.pa  = 2 * cos;
@@ -121,11 +122,18 @@ IWRAM_CODE void rotate(u8 angle) {
         if (!cell->has_sprite) {
             continue;
         }
+        u8 tile = 64, ox = 80 - 6, oy = 120 - 6;
+        if (cell->matched) {
+            tile += 12 - ((matching - 1) & 0x0C) + (cell->slides ? 0 : 16);
+            ox -= 2;
+            oy -= 2;
+        }
+
         OBJATTR* s = &shadow.sprites[idx++];
-        s->attr0   = (74 - ((cos * y + -sin * x) >> 8));
-        s->attr1   = (114 - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
+        s->attr0   = (ox - ((cos * y + -sin * x) >> 8));
+        s->attr1   = (oy - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color >= 1) {
-            s->attr2 = 64 | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
+            s->attr2 = tile | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
             s->attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
@@ -154,6 +162,7 @@ void set_tile(loc_t l, u8 value, u8 links) {
     cell->solid      = value != 0;
     cell->links      = links;
     cell->slides     = value >= 16;
+    cell->matched    = false;
     cell->has_sprite = false;
 
     fill(l, value);
@@ -271,37 +280,64 @@ IWRAM_CODE void drop(u8 angle, u8 remainder) {
 }
 
 IWRAM_CODE bool match() {
-    u16 match[14] = {};
+    bool any = false;
     for (int y = 0; y < 13; ++y) {
         for (int x = 0; x < 13; ++x) {
-            loc_t   l = {.y = y, .x = x};
-            cell_t *a = &level[l.index], *b = &level[l.index + 1], *c = &level[l.index + 16];
+            loc_t   la = {.y = y, .x = x}, lb = {.y = y, .x = x + 1}, lc = {.y = y + 1, .x = x};
+            cell_t *a = &level[la.index], *b = &level[lb.index], *c = &level[lc.index];
             if (!a->color) {
                 continue;
             }
             if (a->color == b->color) {
-                match[y] |= (3 << x);
+                any = (a->matched = b->matched = true);
             }
             if (a->color == c->color) {
-                match[y] |= (1 << x);
-                match[y + 1] |= (1 << x);
+                any = (a->matched = c->matched = true);
+            }
+            if (a->matched && !a->has_sprite) {
+                a->has_sprite = true;
+                a->sprite.x   = 6 * width - 6 - la.x * 12;
+                a->sprite.y   = 6 * height - 6 - la.y * 12;
+                fill(la, 0);
+            }
+            if (b->matched && !b->has_sprite) {
+                b->has_sprite = true;
+                b->sprite.x   = 6 * width - 6 - lb.x * 12;
+                b->sprite.y   = 6 * height - 6 - lb.y * 12;
+                fill(lb, 0);
+            }
+            if (c->matched && !c->has_sprite) {
+                c->has_sprite = true;
+                c->sprite.x   = 6 * width - 6 - lc.x * 12;
+                c->sprite.y   = 6 * height - 6 - lc.y * 12;
+                fill(lc, 0);
             }
         }
     }
+    return any;
+}
 
-    bool done = true;
+IWRAM_CODE void clear() {
     for (int y = 0; y < 14; ++y) {
         for (int x = 0; x < 14; ++x) {
-            loc_t   l    = {.y = y, .x = x};
-            cell_t* cell = &level[l.index];
-            if (match[y] & (1 << x)) {
+            loc_t l = {.y = y, .x = x};
+            if (level[l.index].matched) {
                 set_tile(l, 0, 0);
-            } else if (cell->color) {
-                done = false;
             }
         }
     }
-    return done;
+}
+
+IWRAM_CODE bool done() {
+    loc_t l;
+    for (l.y = 0; l.y < 14; ++l.y) {
+        for (l.x = 0; l.x < 14; ++l.x) {
+            if (level[l.index].color) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 void set_orb(loc_t l, u8 color) {
@@ -355,7 +391,7 @@ bool play_level(int lvl) {
     }
 
     u8 angle = 0;
-    rotate(angle);
+    rotate(angle, 0);
 
     REG_DISPCNT = MODE_2 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
 
@@ -367,16 +403,25 @@ bool play_level(int lvl) {
     u16 last_keys = REG_KEYINPUT;
     s16 turning   = 0;
     u16 falling   = 0;
+    u16 matching  = 0;
     if (check_gravity(angle)) {
         falling = 6;
     }
     while (true) {
         if (turning) {
             angle += turning;
-            rotate(angle);
             if (!(angle & 0x3F)) {
                 turning = 0;
                 if (check_gravity(angle)) {
+                    falling = 6;
+                }
+            }
+        } else if (matching) {
+            if (!--matching) {
+                clear();
+                if (done()) {
+                    return true;
+                } else if (check_gravity(angle)) {
                     falling = 6;
                 }
             }
@@ -386,12 +431,9 @@ bool play_level(int lvl) {
                 if (check_gravity(angle)) {
                     falling = 6;
                 } else if (match()) {
-                    return true;
-                } else if (check_gravity(angle)) {
-                    falling = 6;
+                    matching = 12;
                 }
             }
-            rotate(angle);
         } else {
             u16 press = (~REG_KEYINPUT & last_keys);
             if (press & (KEY_L | KEY_LEFT)) {
@@ -405,6 +447,7 @@ bool play_level(int lvl) {
             }
             last_keys = REG_KEYINPUT;
         }
+        rotate(angle, matching);
 
         VBlankIntrWait();
 
