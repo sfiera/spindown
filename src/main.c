@@ -280,11 +280,11 @@ IWRAM_CODE bool match() {
                 continue;
             }
             if (a->color == b->color) {
-                match[y] = (3 << x);
+                match[y] |= (3 << x);
             }
             if (a->color == c->color) {
-                match[y]     = (1 << x);
-                match[y + 1] = (1 << x);
+                match[y] |= (1 << x);
+                match[y + 1] |= (1 << x);
             }
         }
     }
