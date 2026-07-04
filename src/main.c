@@ -134,10 +134,10 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         s->attr0   = (ox - ((cos * y + -sin * x) >> 8));
         s->attr1   = (oy - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color >= 1) {
-            s->attr2 = tile | ATTR2_PRIORITY(0) | ATTR2_PALETTE(cell->color - 1);
+            s->attr2 = tile | ATTR2_PRIORITY(1) | ATTR2_PALETTE(cell->color - 1);
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
-            s->attr2 = (links * 4) | ATTR2_PRIORITY(0) | ATTR2_PALETTE(5);
+            s->attr2 = (links * 4) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
         }
     }
     while (idx < 128) {
@@ -351,7 +351,13 @@ void set_orb(loc_t l, u8 color) {
     cell->sprite.y   = 6 * height - 6 - l.y * 12;
 }
 
-bool play_level(int lvl) {
+typedef enum {
+    PLAY_EXIT,
+    PLAY_WIN,
+    PLAY_AGAIN,
+} play_result_t;
+
+void load(int lvl) {
     for (size_t i = 0; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
@@ -391,27 +397,28 @@ bool play_level(int lvl) {
         }
     }
 
-    u8 angle = 0;
-    rotate(angle, 0);
-
     for (int i = 0; i < 30; ++i) {
         char ch       = level_set[lvl].title[i];
         ch            = (ch & 0x0F) | ((ch & 0xF0) << 1);
         MAP[10][0][i] = 0x6100 | ch;
         MAP[10][1][i] = 0x6110 | ch;
     }
+    rotate(0, 0);
+}
 
-    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | OBJ_1D_MAP;
+play_result_t play_level(int lvl) {
+    load(lvl);
 
-    INT_VECTOR = interrupt;
-    REG_DISPSTAT |= LCDC_VBL;
-    REG_IE |= IRQ_VBLANK;
-    REG_IME = 1;
+    REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
+    REG_BLDCNT  = 0;
+    REG_BLDY    = 0;
 
     u16 last_keys = REG_KEYINPUT;
     s16 turning   = 0;
     u16 falling   = 0;
     u16 matching  = 0;
+
+    u8 angle = 0;
     if (check_gravity(angle)) {
         falling = 6;
     }
@@ -428,7 +435,7 @@ bool play_level(int lvl) {
             if (!--matching) {
                 clear();
                 if (done()) {
-                    return true;
+                    return PLAY_WIN;
                 } else if (check_gravity(angle)) {
                     falling = 6;
                 }
@@ -449,13 +456,54 @@ bool play_level(int lvl) {
             } else if (press & (KEY_R | KEY_RIGHT)) {
                 turning = -4;
             } else if (press & (KEY_SELECT)) {
-                return true;
+                return PLAY_EXIT;
             } else if (press & (KEY_START)) {
-                return false;
+                return PLAY_AGAIN;
             }
             last_keys = REG_KEYINPUT;
         }
         rotate(angle, matching);
+
+        VBlankIntrWait();
+
+        REG_BG2PA = bg2.pa;
+        REG_BG2PB = bg2.pb;
+        REG_BG2PC = bg2.pc;
+        REG_BG2PD = bg2.pd;
+        REG_BG2X  = bg2.x;
+        REG_BG2Y  = bg2.y;
+        DMA3COPY(&shadow.sprites, OAM, 128 | DMA16 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[0], MAP_BASE_ADR(8), 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[896], MAP_BASE_ADR(8) + 896, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[1792], MAP_BASE_ADR(8) + 1792, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.palette, BG_COLORS, (tilesPalLen / 4) | DMA32 | DMA_IMMEDIATE);
+    }
+}
+
+IWRAM_CODE void select_level(int* lvl) {
+    load(*lvl);
+    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | OBJ_1D_MAP;
+    REG_BLDCNT  = 0x0D4;
+    REG_BLDY    = 0x0A;
+
+    u16 last_keys = REG_KEYINPUT;
+    while (true) {
+        u16 press = (~REG_KEYINPUT & last_keys);
+        if (press & (KEY_UP | KEY_RIGHT)) {
+            if (!level_set[++*lvl].w) {
+                --*lvl;
+            }
+            load(*lvl);
+        } else if (press & (KEY_DOWN | KEY_LEFT)) {
+            if (--*lvl < 0) {
+                *lvl = 0;
+            }
+            load(*lvl);
+        } else if (press & (KEY_START | KEY_A)) {
+            return;
+        }
+        last_keys = REG_KEYINPUT;
 
         VBlankIntrWait();
 
@@ -492,14 +540,23 @@ IWRAM_CODE int main() {
     for (size_t i = 0; i < 128; ++i) {
         OAM[i].attr0 = 191;
     }
-    REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
-    REG_BG0CNT = BG_SIZE_0 | BG_16_COLOR | CHAR_BASE(0) | SCREEN_BASE(10) | BG_PRIORITY(1);
+    REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8) | BG_PRIORITY(1);
+    REG_BG0CNT = BG_SIZE_0 | BG_16_COLOR | CHAR_BASE(0) | SCREEN_BASE(10);
 
-    int i = 0;
+    INT_VECTOR = interrupt;
+    REG_DISPSTAT |= LCDC_VBL;
+    REG_IE |= IRQ_VBLANK;
+    REG_IME = 1;
+
+    int lvl = 0;
     while (true) {
-        if (play_level(i)) {
-            if (!level_set[++i].w) {
-                i = 0;
+        select_level(&lvl);
+        bool play = true;
+        while (play) {
+            switch (play_level(lvl)) {
+                case PLAY_WIN: play = level_set[++lvl].w != 0; break;
+                case PLAY_EXIT: play = false; break;
+                case PLAY_AGAIN: continue;
             }
         }
     }
