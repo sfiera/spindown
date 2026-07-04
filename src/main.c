@@ -8,6 +8,7 @@
 
 #include "gfx/orbs.h"
 #include "gfx/tiles.h"
+#include "gfx/ui.h"
 #include "levels.h"
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
@@ -393,7 +394,14 @@ bool play_level(int lvl) {
     u8 angle = 0;
     rotate(angle, 0);
 
-    REG_DISPCNT = MODE_2 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
+    for (int i = 0; i < 30; ++i) {
+        char ch       = level_set[lvl].title[i];
+        ch            = (ch & 0x0F) | ((ch & 0xF0) << 1);
+        MAP[10][0][i] = 0x6100 | ch;
+        MAP[10][1][i] = 0x6110 | ch;
+    }
+
+    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | OBJ_1D_MAP;
 
     INT_VECTOR = interrupt;
     REG_DISPSTAT |= LCDC_VBL;
@@ -477,6 +485,7 @@ IWRAM_CODE int main() {
         SPRITE_GFX[i] = orbsTiles[i];
     }
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
+    memcpy(PATRAM4(0, 256), uiTiles, uiTilesLen);
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = OBJ_COLORS[i] = shadow.palette[i] = tilesPal[i];
     }
@@ -484,6 +493,7 @@ IWRAM_CODE int main() {
         OAM[i].attr0 = 191;
     }
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8);
+    REG_BG0CNT = BG_SIZE_0 | BG_16_COLOR | CHAR_BASE(0) | SCREEN_BASE(10) | BG_PRIORITY(1);
 
     int i = 0;
     while (true) {
