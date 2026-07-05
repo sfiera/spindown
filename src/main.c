@@ -357,6 +357,15 @@ typedef enum {
     PLAY_AGAIN,
 } play_result_t;
 
+void draw_str(int x, int y, const char* s, int color) {
+    for (int i = 0; i < strlen(s); ++i) {
+        char ch = (s[i] & 0x0F) | ((s[i] & 0xF0) << 1);
+
+        MAP[10][y + 0][i + x] = 0x100 | ch | (color << 12);
+        MAP[10][y + 1][i + x] = 0x110 | ch | (color << 12);
+    }
+}
+
 void load(int lvl) {
     for (size_t i = 0; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
@@ -401,12 +410,7 @@ void load(int lvl) {
     int start = (31 - len) / 2;
     bzero(MAP[10][18], sizeof(MAP[10][0]));
     bzero(MAP[10][19], sizeof(MAP[10][1]));
-    for (int i = 0; i < len; ++i) {
-        char ch                = level_set[lvl].title[i];
-        ch                     = (ch & 0x0F) | ((ch & 0xF0) << 1);
-        MAP[10][18][i + start] = 0x6100 | ch;
-        MAP[10][19][i + start] = 0x6110 | ch;
-    }
+    draw_str(start, 18, level_set[lvl].title, 6);
     rotate(0, 0);
 }
 
@@ -513,21 +517,14 @@ IWRAM_CODE void select_level(int* lvl) {
     bzero(MAP[10], sizeof(MAP[10]));
     load(*lvl);
 
-    for (int i = 0; i < 12; ++i) {
-        char ch           = "SELECT LEVEL"[i];
-        ch                = (ch & 0x0F) | ((ch & 0xF0) << 1);
-        MAP[10][0][i + 9] = 0x6100 | ch;
-        MAP[10][1][i + 9] = 0x6110 | ch;
-    }
+    draw_str(9, 0, "SELECT LEVEL", 6);
+    draw_str(8, 21, "(C)2026 SFIERA", 6);
 
     int i = 0x01;
     int l = 0;
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 10; ++x) {
-            int color = 0x5000;
-            if (valid_level(l++)) {
-                color = 0x6000;
-            }
+            int color                     = (valid_level(l++) ? 6 : 5) << 12;
             MAP[10][3 * y + 3][3 * x + 1] = 0x160 | (i >> 4) | color;
             MAP[10][3 * y + 4][3 * x + 1] = 0x170 | (i >> 4) | color;
             MAP[10][3 * y + 3][3 * x + 2] = 0x160 | (i & 0xF) | color;
