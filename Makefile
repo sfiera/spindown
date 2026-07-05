@@ -54,6 +54,10 @@ clean:
 run: $(TARGET)
 	open -a mGBA $(TARGET)
 
+.PHONY: optipng
+optipng:
+	optipng -strip all -np -o7 gfx/*.png
+
 %.gba: $(BUILD)/%.elf
 	$(OBJCOPY) -O binary $< $(BUILD)/$*.gba
 	gbafix $(BUILD)/$*.gba -t$* -c$(GAME_CODE) -m$(MAKER_CODE)
