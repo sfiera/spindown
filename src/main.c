@@ -509,6 +509,13 @@ IWRAM_CODE void select_level(int* lvl) {
     bzero(MAP[10], sizeof(MAP[10]));
     load(*lvl);
 
+    for (int i = 0; i < 12; ++i) {
+        char ch           = "SELECT LEVEL"[i];
+        ch                = (ch & 0x0F) | ((ch & 0xF0) << 1);
+        MAP[10][0][i + 9] = 0x6100 | ch;
+        MAP[10][1][i + 9] = 0x6110 | ch;
+    }
+
     int i = 0x01;
     int l = 0;
     for (int y = 0; y < 5; ++y) {
