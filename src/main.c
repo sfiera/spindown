@@ -495,14 +495,18 @@ void highlight_level(int lvl, bool on) {
     MAP[10][y + 5][x + 3] = on ? 0x0D01 : 0;
 }
 
-void change_level(int* lvl, int mod) {
+bool valid_level(int lvl) { return level_set[lvl].w; }
+
+bool change_level(int* lvl, int mod) {
     int lvl2 = *lvl + mod;
-    if ((0 <= lvl2) && (lvl2 < 50)) {
-        highlight_level(*lvl, false);
-        highlight_level(lvl2, true);
-        load(lvl2);
-        *lvl = lvl2;
+    if ((lvl2 < 0) || (50 <= lvl2)) {
+        return false;
     }
+    highlight_level(*lvl, false);
+    highlight_level(lvl2, true);
+    load(lvl2);
+    *lvl = lvl2;
+    return true;
 }
 
 IWRAM_CODE void select_level(int* lvl) {
@@ -521,7 +525,7 @@ IWRAM_CODE void select_level(int* lvl) {
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 10; ++x) {
             int color = 0x5000;
-            if (level_set[l++].w) {
+            if (valid_level(l++)) {
                 color = 0x6000;
             }
             MAP[10][3 * y + 3][3 * x + 1] = 0x160 | (i >> 4) | color;
@@ -552,7 +556,7 @@ IWRAM_CODE void select_level(int* lvl) {
         } else if (press & KEY_LEFT) {
             change_level(lvl, -1);
         } else if (press & (KEY_START | KEY_A)) {
-            if (level_set[*lvl].w) {
+            if (valid_level(*lvl)) {
                 return;
             }
         }
@@ -607,7 +611,7 @@ IWRAM_CODE int main() {
         bool play = true;
         while (play) {
             switch (play_level(lvl)) {
-                case PLAY_WIN: play = level_set[++lvl].w != 0; break;
+                case PLAY_WIN: play = change_level(&lvl, 1) && valid_level(lvl); break;
                 case PLAY_EXIT: play = false; break;
                 case PLAY_AGAIN: continue;
             }
