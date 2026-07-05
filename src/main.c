@@ -397,11 +397,15 @@ void load(int lvl) {
         }
     }
 
-    for (int i = 0; i < 30; ++i) {
-        char ch       = level_set[lvl].title[i];
-        ch            = (ch & 0x0F) | ((ch & 0xF0) << 1);
-        MAP[10][0][i] = 0x6100 | ch;
-        MAP[10][1][i] = 0x6110 | ch;
+    int len   = strlen(level_set[lvl].title);
+    int start = (31 - len) / 2;
+    bzero(MAP[10][18], sizeof(MAP[10][0]));
+    bzero(MAP[10][19], sizeof(MAP[10][1]));
+    for (int i = 0; i < len; ++i) {
+        char ch                = level_set[lvl].title[i];
+        ch                     = (ch & 0x0F) | ((ch & 0xF0) << 1);
+        MAP[10][18][i + start] = 0x6100 | ch;
+        MAP[10][19][i + start] = 0x6110 | ch;
     }
     rotate(0, 0);
 }
@@ -481,8 +485,50 @@ play_result_t play_level(int lvl) {
     }
 }
 
+void highlight_level(int lvl, bool on) {
+    int x = (lvl % 10) * 3;
+    int y = (lvl / 10) * 3;
+
+    MAP[10][y + 2][x + 0] = on ? 0x0101 : 0;
+    MAP[10][y + 2][x + 3] = on ? 0x0501 : 0;
+    MAP[10][y + 5][x + 0] = on ? 0x0901 : 0;
+    MAP[10][y + 5][x + 3] = on ? 0x0D01 : 0;
+}
+
+void change_level(int* lvl, int mod) {
+    int lvl2 = *lvl + mod;
+    if ((0 <= lvl2) && (lvl2 < 50)) {
+        highlight_level(*lvl, false);
+        highlight_level(lvl2, true);
+        load(lvl2);
+        *lvl = lvl2;
+    }
+}
+
 IWRAM_CODE void select_level(int* lvl) {
+    bzero(MAP[10], sizeof(MAP[10]));
     load(*lvl);
+
+    int i = 0x01;
+    int l = 0;
+    for (int y = 0; y < 5; ++y) {
+        for (int x = 0; x < 10; ++x) {
+            int color = 0x5000;
+            if (level_set[l++].w) {
+                color = 0x6000;
+            }
+            MAP[10][3 * y + 3][3 * x + 1] = 0x160 | (i >> 4) | color;
+            MAP[10][3 * y + 4][3 * x + 1] = 0x170 | (i >> 4) | color;
+            MAP[10][3 * y + 3][3 * x + 2] = 0x160 | (i & 0xF) | color;
+            MAP[10][3 * y + 4][3 * x + 2] = 0x170 | (i & 0xF) | color;
+            if ((++i & 0xF) == 10) {
+                i += (0x10 - 10);
+            }
+        }
+    }
+    highlight_level(*lvl, true);
+    REG_BG0HOFS = 4;
+
     REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | OBJ_1D_MAP;
     REG_BLDCNT  = 0x0D4;
     REG_BLDY    = 0x0A;
@@ -490,18 +536,18 @@ IWRAM_CODE void select_level(int* lvl) {
     u16 last_keys = REG_KEYINPUT;
     while (true) {
         u16 press = (~REG_KEYINPUT & last_keys);
-        if (press & (KEY_UP | KEY_RIGHT)) {
-            if (!level_set[++*lvl].w) {
-                --*lvl;
-            }
-            load(*lvl);
-        } else if (press & (KEY_DOWN | KEY_LEFT)) {
-            if (--*lvl < 0) {
-                *lvl = 0;
-            }
-            load(*lvl);
+        if (press & KEY_UP) {
+            change_level(lvl, -10);
+        } else if (press & KEY_DOWN) {
+            change_level(lvl, +10);
+        } else if (press & KEY_RIGHT) {
+            change_level(lvl, +1);
+        } else if (press & KEY_LEFT) {
+            change_level(lvl, -1);
         } else if (press & (KEY_START | KEY_A)) {
-            return;
+            if (level_set[*lvl].w) {
+                return;
+            }
         }
         last_keys = REG_KEYINPUT;
 

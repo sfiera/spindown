@@ -6,4 +6,4 @@ typedef struct level {
     const char data[14 * 14];
 } level_t;
 
-extern level_t level_set[];
+extern level_t level_set[50];
