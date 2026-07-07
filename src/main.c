@@ -3,6 +3,7 @@
 #include <gba_interrupt.h>
 #include <gba_sprites.h>
 #include <gba_systemcalls.h>
+#include <gba_types.h>
 #include <gba_video.h>
 #include <string.h>
 
@@ -70,16 +71,13 @@ typedef struct {
     u8 has_sprite : 1;
     u8 supported : 1;
     u8 matched : 1;
-
-    struct {
-        s8 x, y;
-    } sprite;
 } cell_t;
 
 IWRAM_DATA cell_t tile_empty = {};
 
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
+IWRAM_DATA u8     off_x, off_y;
 
 IWRAM_DATA struct {
     union {
@@ -117,11 +115,18 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
     }
 
     int idx = 0;
+    s8  cx  = (6 * width) - 6;
+    s8  cy  = (6 * height) - 6;
     for (loc_t l = {.index = 0}; l.index < 14 * 16; ++l.index) {
         const cell_t* cell = &level[l.index];
-        s8            x = cell->sprite.x, y = cell->sprite.y;
         if (!cell->has_sprite) {
             continue;
+        }
+        s8 x = cx - l.x * 12;
+        s8 y = cy - l.y * 12;
+        if (!cell->supported) {
+            x += off_x;
+            y += off_y;
         }
         u8 tile = 64, ox = 80 - 6, oy = 120 - 6;
         if (cell->matched) {
@@ -233,7 +238,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     return false;
 }
 
-IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up, s8 dx, s8 dy) {
+IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up) {
     cell_t *prev, *cell = NULL;
     while (loc_valid(l)) {
         prev = cell;
@@ -244,17 +249,13 @@ IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up, s8 dx, s8 dy) {
         }
         if (!cell->has_sprite) {
             cell->has_sprite = true;
-            cell->sprite.x   = 6 * width - 6 - l.x * 12;
-            cell->sprite.y   = 6 * height - 6 - l.y * 12;
             fill(l, 0);
         }
-        cell->sprite.x += dx;
-        cell->sprite.y += dy;
         if (!remainder) {
-            *prev = *cell;
-            *cell = tile_empty;
+            loc_t l_prev = {.index = l.index - up};
+            *prev        = *cell;
+            *cell        = tile_empty;
             if (!prev->color) {
-                loc_t l_prev     = {.index = l.index - up};
                 prev->has_sprite = false;
                 fill(l_prev, 16 | prev->links);
             }
@@ -274,8 +275,10 @@ IWRAM_CODE void drop(u8 angle, u8 remainder) {
         case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, dx = -2; break;
     }
 
+    off_x += dx;
+    off_y += dy;
     while (loc_valid(l)) {
-        drop_column(l, remainder, up, dx, dy);
+        drop_column(l, remainder, up);
         l.index += right;
     }
 }
@@ -297,20 +300,14 @@ IWRAM_CODE bool match() {
             }
             if (a->matched && !a->has_sprite) {
                 a->has_sprite = true;
-                a->sprite.x   = 6 * width - 6 - la.x * 12;
-                a->sprite.y   = 6 * height - 6 - la.y * 12;
                 fill(la, 0);
             }
             if (b->matched && !b->has_sprite) {
                 b->has_sprite = true;
-                b->sprite.x   = 6 * width - 6 - lb.x * 12;
-                b->sprite.y   = 6 * height - 6 - lb.y * 12;
                 fill(lb, 0);
             }
             if (c->matched && !c->has_sprite) {
                 c->has_sprite = true;
-                c->sprite.x   = 6 * width - 6 - lc.x * 12;
-                c->sprite.y   = 6 * height - 6 - lc.y * 12;
                 fill(lc, 0);
             }
         }
@@ -347,8 +344,6 @@ void set_orb(loc_t l, u8 color) {
     cell->color      = color;
     cell->has_sprite = true;
     cell->slides     = true;
-    cell->sprite.x   = 6 * width - 6 - l.x * 12;
-    cell->sprite.y   = 6 * height - 6 - l.y * 12;
 }
 
 typedef enum {
@@ -451,6 +446,7 @@ play_result_t play_level(int lvl) {
         } else if (falling) {
             drop(angle, --falling);
             if (!falling) {
+                off_x = off_y = 0;
                 if (check_gravity(angle)) {
                     falling = 6;
                 } else if (match()) {
