@@ -15,6 +15,13 @@
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
 typedef enum {
+    GAME_IDLE,
+    GAME_TURN,
+    GAME_FALL,
+    GAME_CLEAR,
+} game_state_t;
+
+typedef enum {
     TILE_EMPTY   = 0,
     TILE_WALL    = 1,
     TILE_OUTSIDE = 2,
@@ -254,7 +261,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     return false;
 }
 
-IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up) {
+IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
     cell_t *prev, *cell = NULL;
     while (loc_valid(l)) {
         prev = cell;
@@ -267,7 +274,7 @@ IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up) {
             cell->has_sprite = true;
             fill(l, 0);
         }
-        if (!remainder) {
+        if (done) {
             loc_t l_prev = {.index = l.index - up};
             *prev        = *cell;
             *cell        = tile_empty;
@@ -280,21 +287,18 @@ IWRAM_CODE void drop_column(loc_t l, u8 remainder, s8 up) {
     }
 }
 
-IWRAM_CODE void drop(u8 angle, u8 remainder) {
+IWRAM_CODE void drop(u8 angle, bool done) {
     loc_t l;
     s8    up, right;
-    s8    dx = 0, dy = 0;
     switch (angle >> 6) {
-        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, dy = -2; break;
-        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, dx = +2; break;
-        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, dy = +2; break;
-        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, dx = -2; break;
+        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, off_y -= 2; break;
+        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, off_x += 2; break;
+        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, off_y += 2; break;
+        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, off_x -= 2; break;
     }
 
-    off_x += dx;
-    off_y += dy;
     while (loc_valid(l)) {
-        drop_column(l, remainder, up);
+        drop_column(l, done, up);
         l.index += right;
     }
 }
@@ -331,7 +335,7 @@ IWRAM_CODE bool match() {
     return any;
 }
 
-IWRAM_CODE void clear() {
+IWRAM_CODE void remove_matches() {
     for (int y = 0; y < 14; ++y) {
         for (int x = 0; x < 14; ++x) {
             loc_t l = {.y = y, .x = x};
@@ -424,57 +428,18 @@ play_result_t play_level(int lvl) {
     REG_BLDCNT  = 0;
     REG_BLDY    = 0;
 
-    u16 last_keys = REG_KEYINPUT;
-    s16 turning   = 0;
-    u16 falling   = 0;
-    u16 matching  = 0;
+    game_state_t state     = GAME_IDLE;
+    u16          last_keys = REG_KEYINPUT;
+    s16          turning   = 0;
+    u16          delay     = 0;
 
     u8 angle = 0;
     if (check_gravity(angle)) {
-        falling = 6;
+        state = GAME_FALL;
+        delay = 6;
     }
     while (true) {
-        if (turning) {
-            angle += turning;
-            if (!(angle & 0x3F)) {
-                turning = 0;
-                if (check_gravity(angle)) {
-                    falling = 6;
-                }
-            }
-        } else if (matching) {
-            if (!--matching) {
-                clear();
-                if (done()) {
-                    return PLAY_WIN;
-                } else if (check_gravity(angle)) {
-                    falling = 6;
-                }
-            }
-        } else if (falling) {
-            drop(angle, --falling);
-            if (!falling) {
-                off_x = off_y = 0;
-                if (check_gravity(angle)) {
-                    falling = 6;
-                } else if (match()) {
-                    matching = 12;
-                }
-            }
-        } else {
-            u16 press = (~REG_KEYINPUT & last_keys);
-            if (press & (KEY_L | KEY_LEFT)) {
-                turning = +4;
-            } else if (press & (KEY_R | KEY_RIGHT)) {
-                turning = -4;
-            } else if (press & (KEY_SELECT)) {
-                return PLAY_EXIT;
-            } else if (press & (KEY_START)) {
-                return PLAY_AGAIN;
-            }
-            last_keys = REG_KEYINPUT;
-        }
-        rotate(angle, matching);
+        rotate(angle, delay);
 
         VBlankIntrWait();
 
@@ -490,6 +455,73 @@ play_result_t play_level(int lvl) {
         DMA3COPY(&shadow.tilemap[1792], MAP_BASE_ADR(8) + 1792, 224 | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.palette, BG_COLORS, (tilesPalLen / 4) | DMA32 | DMA_IMMEDIATE);
+
+        switch (state) {
+            case GAME_TURN:
+                angle += turning;
+                if (angle & 0x3F) {
+                    continue;
+                }
+
+                if (check_gravity(angle)) {
+                    state = GAME_FALL;
+                    delay = 6;
+                } else {
+                    state = GAME_IDLE;
+                }
+                break;
+
+            case GAME_CLEAR:
+                if (--delay) {
+                    continue;
+                }
+
+                remove_matches();
+                if (done()) {
+                    return PLAY_WIN;
+                } else if (check_gravity(angle)) {
+                    state = GAME_FALL;
+                    delay = 6;
+                } else {
+                    state = GAME_IDLE;
+                }
+                break;
+
+            case GAME_FALL:
+                drop(angle, --delay == 0);
+                if (delay) {
+                    continue;
+                }
+
+                off_x = off_y = 0;
+                if (check_gravity(angle)) {
+                    state = GAME_FALL;
+                    delay = 6;
+                } else if (match()) {
+                    state = GAME_CLEAR;
+                    delay = 12;
+                } else {
+                    state = GAME_IDLE;
+                }
+                break;
+
+            case GAME_IDLE: {
+                u16 press = (~REG_KEYINPUT & last_keys);
+                if (press & (KEY_L | KEY_LEFT)) {
+                    state   = GAME_TURN;
+                    turning = +4;
+                } else if (press & (KEY_R | KEY_RIGHT)) {
+                    state   = GAME_TURN;
+                    turning = -4;
+                } else if (press & (KEY_SELECT)) {
+                    return PLAY_EXIT;
+                } else if (press & (KEY_START)) {
+                    return PLAY_AGAIN;
+                }
+                last_keys = REG_KEYINPUT;
+                break;
+            }
+        }
     }
 }
 
