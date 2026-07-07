@@ -14,6 +14,15 @@
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
+typedef enum {
+    TILE_EMPTY   = 0,
+    TILE_WALL    = 1,
+    TILE_OUTSIDE = 2,
+    TILE_BLOCK   = 3,
+    TILE_TARGET  = 4,
+    TILE_MARBLE  = 5,
+} tile_type_t;
+
 IWRAM_CODE void interrupt() {
     REG_IF = IRQ_VBLANK;
     REG_IFBIOS |= IRQ_VBLANK;
@@ -162,16 +171,23 @@ void fill(loc_t l, u8 value) {
     }
 }
 
-void set_tile(loc_t l, u8 value, u8 links) {
+void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
     cell_t* cell     = &level[l.index];
-    cell->color      = (8 <= value && value < 13) ? (value - 7) : 0;
-    cell->solid      = value != 0;
+    cell->color      = color;
     cell->links      = links;
-    cell->slides     = value >= 16;
+    cell->slides     = (type == TILE_BLOCK) || (type == TILE_MARBLE);
+    cell->solid      = !(cell->slides || (type == TILE_EMPTY));
     cell->matched    = false;
-    cell->has_sprite = false;
+    cell->has_sprite = type == TILE_MARBLE;
 
-    fill(l, value);
+    switch (type) {
+        case TILE_BLOCK: fill(l, 16 | links); break;
+        case TILE_TARGET: fill(l, 7 + color); break;
+        case TILE_MARBLE:
+        case TILE_EMPTY: fill(l, 0); break;
+        case TILE_WALL: fill(l, 1); break;
+        case TILE_OUTSIDE: fill(l, 2); break;
+    }
 }
 
 IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link) {
@@ -320,7 +336,7 @@ IWRAM_CODE void clear() {
         for (int x = 0; x < 14; ++x) {
             loc_t l = {.y = y, .x = x};
             if (level[l.index].matched) {
-                set_tile(l, 0, 0);
+                set_tile(l, TILE_EMPTY, 0, 0);
             }
         }
     }
@@ -336,14 +352,6 @@ IWRAM_CODE bool done() {
         }
     }
     return true;
-}
-
-void set_orb(loc_t l, u8 color) {
-    set_tile(l, 0, 0);
-    cell_t* cell     = &level[l.index];
-    cell->color      = color;
-    cell->has_sprite = true;
-    cell->slides     = true;
 }
 
 typedef enum {
@@ -376,25 +384,25 @@ void load(int lvl) {
             loc_t l     = {.x = x, .y = y};
             u8    links = 0;
             switch (*tiles) {
-                case '.': set_tile(l, 2, 0); break;
-                case '#': set_tile(l, 1, 0); break;
-                case ' ': set_tile(l, 0, 0); break;
-                case 'A': set_tile(l, 8, 0); break;
-                case 'B': set_tile(l, 9, 0); break;
-                case 'C': set_tile(l, 10, 0); break;
-                case 'D': set_tile(l, 11, 0); break;
-                case 'E': set_tile(l, 12, 0); break;
-                case 'a': set_orb(l, 1); break;
-                case 'b': set_orb(l, 2); break;
-                case 'c': set_orb(l, 3); break;
-                case 'd': set_orb(l, 4); break;
-                case 'e': set_orb(l, 5); break;
+                case '.': set_tile(l, TILE_OUTSIDE, 0, 0); break;
+                case '#': set_tile(l, TILE_WALL, 0, 0); break;
+                case ' ': set_tile(l, TILE_EMPTY, 0, 0); break;
+                case 'A': set_tile(l, TILE_TARGET, 1, 0); break;
+                case 'a': set_tile(l, TILE_MARBLE, 1, 0); break;
+                case 'B': set_tile(l, TILE_TARGET, 2, 0); break;
+                case 'b': set_tile(l, TILE_MARBLE, 2, 0); break;
+                case 'C': set_tile(l, TILE_TARGET, 3, 0); break;
+                case 'c': set_tile(l, TILE_MARBLE, 3, 0); break;
+                case 'D': set_tile(l, TILE_TARGET, 4, 0); break;
+                case 'd': set_tile(l, TILE_MARBLE, 4, 0); break;
+                case 'E': set_tile(l, TILE_TARGET, 5, 0); break;
+                case 'e': set_tile(l, TILE_MARBLE, 5, 0); break;
                 default:
                     links = (((y > 0) && (*tiles == tiles[-width])) ? LINK_UP : 0) |
                             (((x < width - 1) && (*tiles == tiles[1])) ? LINK_RT : 0) |
                             (((y < height - 1) && (*tiles == tiles[width])) ? LINK_DN : 0) |
                             (((x > 0) && (*tiles == tiles[-1])) ? LINK_LT : 0);
-                    set_tile(l, 16 | links, links);
+                    set_tile(l, TILE_BLOCK, 0, links);
                     break;
             }
             ++tiles;
