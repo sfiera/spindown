@@ -91,7 +91,7 @@ typedef struct {
     u8 has_sprite : 1;
 
     u8 links : 4;
-    u8 supported : 1;
+    u8 falling : 1;
     u8 matched : 1;
 } cell_t;
 
@@ -146,7 +146,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         }
         s8 x = cx - l.x * 12;
         s8 y = cy - l.y * 12;
-        if (!cell->supported) {
+        if (cell->falling) {
             x += off_x;
             y += off_y;
         }
@@ -204,47 +204,44 @@ void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
 
 IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link) {
     cell_t *prev, *cell = NULL;
-    while (loc_valid(l)) {
+    for (; loc_valid(l); l.index += up) {
         prev = cell;
         cell = &level[l.index];
-        if ((cell->type & TILE_SLIDES) && (!prev || prev->supported)) {
-            cell->supported = true;
-            if (cell->links & link) {
-                loc_t l2 = {.index = l.index + right};
-                if (loc_valid(l2) && !level[l2.index].supported) {
-                    level[l2.index].supported = true;
-                    check_gravity_column(l2, up, right, link);
-                }
-            }
-            if (cell->links & (((link << 1) | (link >> 3)) & 0xF)) {
-                loc_t l2 = {.index = l.index - up};
-                if (loc_valid(l2) && !level[l2.index].supported) {
-                    level[l2.index].supported = true;
-                    check_gravity_column(l2, up, right, link);
-                }
-            }
-            if (cell->links & (((link << 2) | (link >> 2)) & 0xF)) {
-                loc_t l2 = {.index = l.index - right};
-                if (loc_valid(l2) && !level[l2.index].supported) {
-                    level[l2.index].supported = true;
-                    check_gravity_column(l2, up, right, link);
-                }
+        if (!(cell->type & TILE_SLIDES)) {
+            continue;  // cannot fall, not relevant
+        } else if (prev && ((prev->type == TILE_EMPTY) || prev->falling)) {
+            continue;  // tile below provides no support
+        }
+
+        cell->falling = false;
+        if (cell->links & link) {
+            loc_t l2 = {.index = l.index + right};
+            if (loc_valid(l2) && level[l2.index].falling) {
+                level[l2.index].falling = false;
+                check_gravity_column(l2, up, right, link);
             }
         }
-        l.index += up;
+        if (cell->links & (((link << 1) | (link >> 3)) & 0xF)) {
+            loc_t l2 = {.index = l.index - up};
+            if (loc_valid(l2) && level[l2.index].falling) {
+                level[l2.index].falling = false;
+                check_gravity_column(l2, up, right, link);
+            }
+        }
+        if (cell->links & (((link << 2) | (link >> 2)) & 0xF)) {
+            loc_t l2 = {.index = l.index - right};
+            if (loc_valid(l2) && level[l2.index].falling) {
+                level[l2.index].falling = false;
+                check_gravity_column(l2, up, right, link);
+            }
+        }
     }
 }
 
-IWRAM_CODE bool check_gravity(u8 angle) {
+IWRAM_CODE bool recheck_gravity(u8 angle) {
     loc_t l;
-    for (l.y = 0; l.y < 14; ++l.y) {
-        for (l.x = 0; l.x < 14; ++l.x) {
-            level[l.index].supported = level[l.index].type & TILE_SOLID;
-        }
-    }
-
-    s8 up, right;
-    u8 link;
+    s8    up, right;
+    u8    link;
     switch (angle >> 6) {
         case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, link = LINK_RT; break;
         case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, link = LINK_DN; break;
@@ -258,7 +255,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
 
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            if ((level[l.index].type & TILE_SLIDES) && !level[l.index].supported) {
+            if (level[l.index].falling) {
                 return true;
             }
         }
@@ -266,13 +263,22 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     return false;
 }
 
+IWRAM_CODE bool check_gravity(u8 angle) {
+    loc_t l;
+    for (l.y = 0; l.y < 14; ++l.y) {
+        for (l.x = 0; l.x < 14; ++l.x) {
+            level[l.index].falling = (level[l.index].type & TILE_SLIDES) ? 1 : 0;
+        }
+    }
+    return recheck_gravity(angle);
+}
+
 IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
     cell_t *prev, *cell = NULL;
-    while (loc_valid(l)) {
+    for (; loc_valid(l); l.index += up) {
         prev = cell;
         cell = &level[l.index];
-        if (!(cell->type & TILE_SLIDES) || cell->supported) {
-            l.index += up;
+        if (!cell->falling) {
             continue;
         }
         if (!cell->has_sprite) {
@@ -288,7 +294,6 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
                 fill(l_prev, 16 | prev->links);
             }
         }
-        l.index += up;
     }
 }
 
@@ -499,8 +504,7 @@ play_result_t play_level(int lvl) {
                 }
 
                 off_x = off_y = 0;
-                if (check_gravity(angle)) {
-                    state = GAME_FALL;
+                if (recheck_gravity(angle)) {
                     delay = 6;
                 } else if (match()) {
                     state = GAME_CLEAR;
