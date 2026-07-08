@@ -22,12 +22,19 @@ typedef enum {
 } game_state_t;
 
 typedef enum {
+    TILE_SOLID   = 1 << 0,
+    TILE_TALL    = 1 << 1,
+    TILE_COLORED = 1 << 2,
+    TILE_SLIDES  = 1 << 3,
+} tile_flag_t;
+
+typedef enum {
     TILE_EMPTY   = 0,
-    TILE_WALL    = 1,
-    TILE_OUTSIDE = 2,
-    TILE_BLOCK   = 3,
-    TILE_TARGET  = 4,
-    TILE_MARBLE  = 5,
+    TILE_OUTSIDE = TILE_SOLID,
+    TILE_WALL    = TILE_SOLID | TILE_TALL,
+    TILE_BLOCK   = TILE_SLIDES,
+    TILE_TARGET  = TILE_COLORED | TILE_SOLID | TILE_TALL,
+    TILE_MARBLE  = TILE_COLORED | TILE_SLIDES,
 } tile_type_t;
 
 IWRAM_CODE void interrupt() {
@@ -79,12 +86,11 @@ enum {
 };
 
 typedef struct {
+    u8 type : 4;
     u8 color : 3;
-    u8 solid : 1;
-    u8 links : 4;
-
-    u8 slides : 1;
     u8 has_sprite : 1;
+
+    u8 links : 4;
     u8 supported : 1;
     u8 matched : 1;
 } cell_t;
@@ -146,7 +152,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         }
         u8 tile = 64, ox = 80 - 6, oy = 120 - 6;
         if (cell->matched) {
-            tile += 12 - ((matching - 1) & 0x0C) + (cell->slides ? 0 : 16);
+            tile += 12 - ((matching - 1) & 0x0C) + ((cell->type & TILE_SLIDES) ? 0 : 16);
             ox -= 2;
             oy -= 2;
         }
@@ -154,7 +160,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         OBJATTR* s = &shadow.sprites[idx++];
         s->attr0   = (ox - ((cos * y + -sin * x) >> 8));
         s->attr1   = (oy - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
-        if (cell->color >= 1) {
+        if (cell->color) {
             s->attr2 = tile | ATTR2_PRIORITY(1) | ATTR2_PALETTE(cell->color - 1);
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
@@ -180,10 +186,9 @@ void fill(loc_t l, u8 value) {
 
 void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
     cell_t* cell     = &level[l.index];
+    cell->type       = type;
     cell->color      = color;
     cell->links      = links;
-    cell->slides     = (type == TILE_BLOCK) || (type == TILE_MARBLE);
-    cell->solid      = !(cell->slides || (type == TILE_EMPTY));
     cell->matched    = false;
     cell->has_sprite = type == TILE_MARBLE;
 
@@ -202,7 +207,7 @@ IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link) {
     while (loc_valid(l)) {
         prev = cell;
         cell = &level[l.index];
-        if (cell->slides && (!prev || prev->supported)) {
+        if ((cell->type & TILE_SLIDES) && (!prev || prev->supported)) {
             cell->supported = true;
             if (cell->links & link) {
                 loc_t l2 = {.index = l.index + right};
@@ -234,7 +239,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            level[l.index].supported = level[l.index].solid && !level[l.index].slides;
+            level[l.index].supported = level[l.index].type & TILE_SOLID;
         }
     }
 
@@ -253,7 +258,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
 
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            if (level[l.index].slides && !level[l.index].supported) {
+            if ((level[l.index].type & TILE_SLIDES) && !level[l.index].supported) {
                 return true;
             }
         }
@@ -266,7 +271,7 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
     while (loc_valid(l)) {
         prev = cell;
         cell = &level[l.index];
-        if (!cell->slides || cell->supported) {
+        if (!(cell->type & TILE_SLIDES) || cell->supported) {
             l.index += up;
             continue;
         }
