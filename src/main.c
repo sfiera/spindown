@@ -20,6 +20,7 @@ typedef enum {
     GAME_TURN,
     GAME_FALL,
     GAME_CLEAR,
+    GAME_WIN,
 } game_state_t;
 
 typedef enum {
@@ -498,7 +499,8 @@ play_result_t play_level(int lvl) {
 
                 remove_matches();
                 if (done()) {
-                    return PLAY_WIN;
+                    state = GAME_WIN;
+                    delay = 30;
                 } else if (check_gravity(angle)) {
                     state = GAME_FALL;
                     delay = 6;
@@ -540,6 +542,12 @@ play_result_t play_level(int lvl) {
                 last_keys = REG_KEYINPUT;
                 break;
             }
+
+            case GAME_WIN:
+                if (--delay) {
+                    continue;
+                }
+                return PLAY_WIN;
         }
     }
 }
