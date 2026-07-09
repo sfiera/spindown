@@ -1,6 +1,7 @@
 #include <gba_dma.h>
 #include <gba_input.h>
 #include <gba_interrupt.h>
+#include <gba_sound.h>
 #include <gba_sprites.h>
 #include <gba_systemcalls.h>
 #include <gba_types.h>
@@ -202,7 +203,38 @@ void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
     }
 }
 
-IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link) {
+IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
+    cell_t* cell = &level[l.index];
+    if (!loc_valid(l) || !cell->falling) {
+        return;
+    }
+
+    cell->falling = false;
+    loc_t l_up    = {.index = l.index + up};
+    if (sound) {
+        if (cell->color) {
+            REG_SOUND1CNT_X = 0x87B4;  // frequency
+        } else {
+            REG_SOUND2CNT_H = 0x8300;  // frequency
+        }
+    }
+
+    add_support(l_up, up, right, link, sound);
+    if (cell->links & link) {
+        loc_t l_right = {.index = l.index + right};
+        add_support(l_right, up, right, link, sound);
+    }
+    if (cell->links & (((link << 1) | (link >> 3)) & 0xF)) {
+        loc_t l_down = {.index = l.index - up};
+        add_support(l_down, up, right, link, sound);
+    }
+    if (cell->links & (((link << 2) | (link >> 2)) & 0xF)) {
+        loc_t l_left = {.index = l.index - right};
+        add_support(l_left, up, right, link, sound);
+    }
+}
+
+IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link, bool sound) {
     cell_t *prev, *cell = NULL;
     for (; loc_valid(l); l.index += up) {
         prev = cell;
@@ -212,33 +244,11 @@ IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link) {
         } else if (prev && ((prev->type == TILE_EMPTY) || prev->falling)) {
             continue;  // tile below provides no support
         }
-
-        cell->falling = false;
-        if (cell->links & link) {
-            loc_t l2 = {.index = l.index + right};
-            if (loc_valid(l2) && level[l2.index].falling) {
-                level[l2.index].falling = false;
-                check_gravity_column(l2, up, right, link);
-            }
-        }
-        if (cell->links & (((link << 1) | (link >> 3)) & 0xF)) {
-            loc_t l2 = {.index = l.index - up};
-            if (loc_valid(l2) && level[l2.index].falling) {
-                level[l2.index].falling = false;
-                check_gravity_column(l2, up, right, link);
-            }
-        }
-        if (cell->links & (((link << 2) | (link >> 2)) & 0xF)) {
-            loc_t l2 = {.index = l.index - right};
-            if (loc_valid(l2) && level[l2.index].falling) {
-                level[l2.index].falling = false;
-                check_gravity_column(l2, up, right, link);
-            }
-        }
+        add_support(l, up, right, link, sound);
     }
 }
 
-IWRAM_CODE bool recheck_gravity(u8 angle) {
+IWRAM_CODE bool recheck_gravity(u8 angle, bool sound) {
     loc_t l;
     s8    up, right;
     u8    link;
@@ -249,7 +259,7 @@ IWRAM_CODE bool recheck_gravity(u8 angle) {
         case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, link = LINK_UP; break;
     }
     while (loc_valid(l)) {
-        check_gravity_column(l, up, right, link);
+        check_gravity_column(l, up, right, link, sound);
         l.index += right;
     }
 
@@ -270,7 +280,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
             level[l.index].falling = (level[l.index].type & TILE_SLIDES) ? 1 : 0;
         }
     }
-    return recheck_gravity(angle);
+    return recheck_gravity(angle, false);
 }
 
 IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
@@ -504,7 +514,7 @@ play_result_t play_level(int lvl) {
                 }
 
                 off_x = off_y = 0;
-                if (recheck_gravity(angle)) {
+                if (recheck_gravity(angle, true)) {
                     delay = 6;
                 } else if (match()) {
                     state = GAME_CLEAR;
@@ -641,6 +651,15 @@ IWRAM_CODE int main() {
     }
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8) | BG_PRIORITY(1);
     REG_BG0CNT = BG_SIZE_0 | BG_16_COLOR | CHAR_BASE(0) | SCREEN_BASE(10);
+
+    REG_SOUNDCNT_X  = 0x80;
+    REG_SOUNDCNT_L  = 0xFF77;
+    REG_SOUNDCNT_H  = 0x0002;
+    REG_SOUND1CNT_L = 0;       // sweep
+    REG_SOUND1CNT_H = 0xF181;  // envelope, length
+    REG_SOUND1CNT_X = 0;       // frequency
+    REG_SOUND2CNT_L = 0xF181;  // envelope, length
+    REG_SOUND2CNT_H = 0;       // frequency
 
     INT_VECTOR = interrupt;
     REG_DISPSTAT |= LCDC_VBL;
