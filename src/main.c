@@ -220,18 +220,18 @@ IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
         }
     }
 
-    add_support(l_up, up, right, link, sound);
+    add_support(l_up, up, right, link, false);
     if (cell->links & link) {
         loc_t l_right = {.index = l.index + right};
-        add_support(l_right, up, right, link, sound);
+        add_support(l_right, up, right, link, false);
     }
     if (cell->links & (((link << 1) | (link >> 3)) & 0xF)) {
         loc_t l_down = {.index = l.index - up};
-        add_support(l_down, up, right, link, sound);
+        add_support(l_down, up, right, link, false);
     }
     if (cell->links & (((link << 2) | (link >> 2)) & 0xF)) {
         loc_t l_left = {.index = l.index - right};
-        add_support(l_left, up, right, link, sound);
+        add_support(l_left, up, right, link, false);
     }
 }
 
