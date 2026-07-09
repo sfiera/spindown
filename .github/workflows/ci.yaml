@@ -1,0 +1,17 @@
+name: push
+on: [push]
+jobs:
+  build:
+    name: Build and upload ROM
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+      - run: make
+      - name: Upload ROM
+        uses: actions/upload-artifact@v7
+        with:
+          name: spindown
+          path: spindown.gba
+
