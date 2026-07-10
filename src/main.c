@@ -88,16 +88,28 @@ enum {
 };
 
 typedef struct {
-    u8 type : 4;
-    u8 color : 3;
-    u8 has_sprite : 1;
+    union {
+        struct {
+            u8 type : 4;
+            u8 flags : 4;
+        };
+        struct {
+            u8 solid : 1;
+            u8 tall : 1;
+            u8 colored : 1;
+            u8 slides : 1;
 
+            u8 has_sprite : 1;
+            u8 falling : 1;
+            u8 matched : 1;
+        };
+    };
+
+    u8 color : 3;
     u8 links : 4;
-    u8 falling : 1;
-    u8 matched : 1;
 } cell_t;
 
-IWRAM_DATA cell_t tile_empty = {};
+static const cell_t tile_empty = {.type = TILE_EMPTY};
 
 IWRAM_DATA cell_t level[16 * 16];
 IWRAM_DATA u8     width, height;
@@ -154,7 +166,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         }
         u8 tile = 64, ox = 80 - 6, oy = 120 - 6;
         if (cell->matched) {
-            tile += 12 - ((matching - 1) & 0x0C) + ((cell->type & TILE_SLIDES) ? 0 : 16);
+            tile += 12 - ((matching - 1) & 0x0C) + (cell->slides ? 0 : 16);
             ox -= 2;
             oy -= 2;
         }
@@ -240,7 +252,7 @@ IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link, bool sou
     for (; loc_valid(l); l.index += up) {
         prev = cell;
         cell = &level[l.index];
-        if (!(cell->type & TILE_SLIDES)) {
+        if (!cell->slides) {
             continue;  // cannot fall, not relevant
         } else if (prev && ((prev->type == TILE_EMPTY) || prev->falling)) {
             continue;  // tile below provides no support
@@ -278,7 +290,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            level[l.index].falling = (level[l.index].type & TILE_SLIDES) ? 1 : 0;
+            level[l.index].falling = level[l.index].slides;
         }
     }
     return recheck_gravity(angle, false);
