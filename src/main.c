@@ -190,12 +190,17 @@ void fill(loc_t l, u8 value) {
     u8 x = l.x * 3;
     u8 y = l.y * 3;
 
-    const u8* src = &tilesMetaTiles[tilesMetaMap[value * 2] * 9];
-    for (u8 yy = y; yy < y + 3; ++yy) {
-        for (u8 xx = x; xx < x + 3; ++xx) {
-            shadow.tilemap[(yy << 6) | xx] = *(src++);
-        }
-    }
+    const u8* src               = &tilesMetaTiles[tilesMetaMap[value * 2] * 9];
+    int       index             = (y << 6) | x;
+    shadow.tilemap[index + 0]   = *(src++);
+    shadow.tilemap[index + 1]   = *(src++);
+    shadow.tilemap[index + 2]   = *(src++);
+    shadow.tilemap[index + 64]  = *(src++);
+    shadow.tilemap[index + 65]  = *(src++);
+    shadow.tilemap[index + 66]  = *(src++);
+    shadow.tilemap[index + 128] = *(src++);
+    shadow.tilemap[index + 129] = *(src++);
+    shadow.tilemap[index + 130] = *(src++);
 }
 
 void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
