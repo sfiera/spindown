@@ -16,12 +16,14 @@
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
 typedef enum {
+    GAME_MENU,
     GAME_IDLE,
     GAME_TURN,
     GAME_FALL,
     GAME_CLEAR,
     GAME_WIN,
 } game_state_t;
+game_state_t state = GAME_MENU;
 
 typedef enum {
     TILE_SOLID   = 1 << 0,
@@ -175,7 +177,8 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         s->attr0   = (ox - ((cos * y + -sin * x) >> 8));
         s->attr1   = (oy - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color) {
-            s->attr2 = tile | ATTR2_PRIORITY(1) | ATTR2_PALETTE(cell->color - 1);
+            s->attr2 = tile | ATTR2_PRIORITY(1) |
+                       ATTR2_PALETTE(cell->color - 1 + (state == GAME_MENU ? 8 : 0));
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
             s->attr2 = (links * 4) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
@@ -460,16 +463,16 @@ void load(int lvl) {
 }
 
 play_result_t play_level(int lvl) {
+    state = GAME_IDLE;
     load(lvl);
 
     REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
     REG_BLDCNT  = 0;
     REG_BLDY    = 0;
 
-    game_state_t state     = GAME_IDLE;
-    u16          last_keys = REG_KEYINPUT;
-    s16          turning   = 0;
-    u16          delay     = 0;
+    u16 last_keys = REG_KEYINPUT;
+    s16 turning   = 0;
+    u16 delay     = 0;
 
     u8 angle = 0;
     if (check_gravity(angle)) {
@@ -497,6 +500,8 @@ play_result_t play_level(int lvl) {
         last_keys |= REG_KEYINPUT;
 
         switch (state) {
+            case GAME_MENU: return PLAY_EXIT;
+
             case GAME_TURN:
                 angle += turning;
                 if (angle & 0x3F) {
@@ -620,7 +625,7 @@ IWRAM_CODE void select_level(int* lvl) {
     REG_BG0HOFS = 4;
 
     REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | OBJ_1D_MAP;
-    REG_BLDCNT  = 0x0D4;
+    REG_BLDCNT  = 0x0C4;
     REG_BLDY    = 0x0A;
 
     u16 last_keys = REG_KEYINPUT;
@@ -673,6 +678,21 @@ IWRAM_CODE int main() {
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = OBJ_COLORS[i] = shadow.palette[i] = tilesPal[i];
     }
+    for (size_t i = 0; i < tilesPalLen / 2; ++i) {
+        union {
+            struct {
+                u16 red : 5;
+                u16 green : 5;
+                u16 blue : 5;
+                u16 x : 1;
+            };
+            u16 value;
+        } color = {.value = OBJ_COLORS[i]};
+        color.red *= 0.375;
+        color.green *= 0.375;
+        color.blue *= 0.375;
+        OBJ_COLORS[i + 128] = color.value;
+    }
     for (size_t i = 0; i < 128; ++i) {
         OAM[i].attr0 = 191;
     }
@@ -695,6 +715,7 @@ IWRAM_CODE int main() {
 
     int lvl = 0;
     while (true) {
+        state = GAME_MENU;
         select_level(&lvl);
         bool play = true;
         while (play) {
