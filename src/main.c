@@ -477,6 +477,8 @@ play_result_t play_level(int lvl) {
         DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.palette, BG_COLORS, (tilesPalLen / 4) | DMA32 | DMA_IMMEDIATE);
 
+        last_keys |= REG_KEYINPUT;
+
         switch (state) {
             case GAME_TURN:
                 angle += turning;
