@@ -216,7 +216,7 @@ IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
         if (cell->color) {
             REG_SOUND1CNT_X = 0x87B4;  // frequency
         } else {
-            REG_SOUND2CNT_H = 0x8300;  // frequency
+            REG_SOUND2CNT_H = 0x8180;  // frequency
         }
     }
 
