@@ -237,6 +237,11 @@ IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
         }
     }
 
+    if (!cell->color) {
+        cell->has_sprite = false;
+        fill(l, 16 | cell->links);
+    }
+
     add_support(l_up, up, right, link, false);
     if (cell->links & link) {
         loc_t l_right = {.index = l.index + right};
@@ -314,13 +319,8 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
             fill(l, 0);
         }
         if (done) {
-            loc_t l_prev = {.index = l.index - up};
-            *prev        = *cell;
-            *cell        = tile_empty;
-            if (!prev->color) {
-                prev->has_sprite = false;
-                fill(l_prev, 16 | prev->links);
-            }
+            *prev = *cell;
+            *cell = tile_empty;
         }
     }
 }
