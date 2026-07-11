@@ -23,8 +23,6 @@ typedef enum {
     GAME_CLEAR,
     GAME_WIN,
 } game_state_t;
-IWRAM_DATA game_state_t state = GAME_MENU;
-IWRAM_DATA u8           angle = 0;
 
 typedef enum {
     TILE_SOLID   = 1 << 0,
@@ -114,9 +112,19 @@ typedef struct {
 
 static const cell_t tile_empty = {.type = TILE_EMPTY};
 
-IWRAM_DATA cell_t level[16 * 16];
-IWRAM_DATA u8     width, height;
-IWRAM_DATA u8     off_x, off_y;
+IWRAM_DATA union {
+    cell_t reserved[16 * 16];
+    struct {
+        cell_t       level[14 * 16];
+        game_state_t state;
+        u8           angle;
+        u8           width, height;
+        u8           off_x, off_y;
+    };
+} game = {
+    .state = GAME_MENU,
+    .angle = 0,
+};
 
 IWRAM_DATA struct {
     union {
@@ -133,17 +141,17 @@ IWRAM_DATA struct {
 } bg2;
 
 IWRAM_CODE void rotate(u8 matching) {
-    s16 cos = sin_table[(angle + 64) & 0xFF];
-    s16 sin = sin_table[angle];
+    s16 cos = sin_table[(game.angle + 64) & 0xFF];
+    s16 sin = sin_table[game.angle];
     bg2.pa  = 2 * cos;
     bg2.pb  = 2 * -sin;
     bg2.pc  = 2 * sin;
     bg2.pd  = 2 * cos;
-    bg2.x   = 12 * width * 0x100 - (cos * (2 * 120 - 1) + -sin * (2 * 80 - 1));
-    bg2.y   = 12 * height * 0x100 - (sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
+    bg2.x   = 12 * game.width * 0x100 - (cos * (2 * 120 - 1) + -sin * (2 * 80 - 1));
+    bg2.y   = 12 * game.height * 0x100 - (sin * (2 * 120 - 1) + cos * (2 * 80 - 1));
 
-    u8 a4 = (angle >> 6);
-    u8 a8 = (angle >> 5);
+    u8 a4 = (game.angle >> 6);
+    u8 a8 = (game.angle >> 5);
     for (int i = 0; i < 96; i += 16) {
         for (int j = 0; j < 4; ++j) {
             shadow.palette[i + 2 + j] = tilesPal[i + 2 + ((j + 4 - a4) % 4)];
@@ -154,18 +162,18 @@ IWRAM_CODE void rotate(u8 matching) {
     }
 
     int idx = 28;
-    s8  cx  = (6 * width) - 6;
-    s8  cy  = (6 * height) - 6;
+    s8  cx  = (6 * game.width) - 6;
+    s8  cy  = (6 * game.height) - 6;
     for (loc_t l = {.index = 0}; l.index < 14 * 16; ++l.index) {
-        const cell_t* cell = &level[l.index];
+        const cell_t* cell = &game.level[l.index];
         if (!cell->has_sprite) {
             continue;
         }
         s8 x = cx - l.x * 12;
         s8 y = cy - l.y * 12;
         if (cell->falling) {
-            x += off_x;
-            y += off_y;
+            x += game.off_x;
+            y += game.off_y;
         }
         u8 tile = 64, ox = 80 - 6, oy = 120 - 6;
         if (cell->matched) {
@@ -179,7 +187,7 @@ IWRAM_CODE void rotate(u8 matching) {
         s->attr1   = (oy - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color) {
             s->attr2 = tile | ATTR2_PRIORITY(1) |
-                       ATTR2_PALETTE(cell->color - 1 + (state == GAME_MENU ? 8 : 0));
+                       ATTR2_PALETTE(cell->color - 1 + (game.state == GAME_MENU ? 8 : 0));
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
             s->attr2 = (links * 2) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
@@ -208,7 +216,7 @@ void fill(loc_t l, u8 value) {
 }
 
 void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
-    cell_t* cell     = &level[l.index];
+    cell_t* cell     = &game.level[l.index];
     cell->type       = type;
     cell->color      = color;
     cell->links      = links;
@@ -226,7 +234,7 @@ void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
 }
 
 IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
-    cell_t* cell = &level[l.index];
+    cell_t* cell = &game.level[l.index];
     if (!loc_valid(l) || !cell->falling) {
         return;
     }
@@ -265,7 +273,7 @@ IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link, bool sou
     cell_t *prev, *cell = NULL;
     for (; loc_valid(l); l.index += up) {
         prev = cell;
-        cell = &level[l.index];
+        cell = &game.level[l.index];
         if (!cell->slides) {
             continue;  // cannot fall, not relevant
         } else if (prev && ((prev->type == TILE_EMPTY) || prev->falling)) {
@@ -292,7 +300,7 @@ IWRAM_CODE bool recheck_gravity(u8 angle, bool sound) {
 
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            if (level[l.index].falling) {
+            if (game.level[l.index].falling) {
                 return true;
             }
         }
@@ -304,7 +312,7 @@ IWRAM_CODE bool check_gravity(u8 angle) {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            level[l.index].falling = level[l.index].slides;
+            game.level[l.index].falling = game.level[l.index].slides;
         }
     }
     return recheck_gravity(angle, false);
@@ -314,7 +322,7 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
     cell_t *prev, *cell = NULL;
     for (; loc_valid(l); l.index += up) {
         prev = cell;
-        cell = &level[l.index];
+        cell = &game.level[l.index];
         if (!cell->falling) {
             continue;
         }
@@ -333,10 +341,10 @@ IWRAM_CODE void drop(u8 angle, bool done) {
     loc_t l;
     s8    up, right;
     switch (angle >> 6) {
-        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, off_y -= 2; break;
-        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, off_x += 2; break;
-        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, off_y += 2; break;
-        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, off_x -= 2; break;
+        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, game.off_y -= 2; break;
+        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, game.off_x += 2; break;
+        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, game.off_y += 2; break;
+        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, game.off_x -= 2; break;
     }
 
     while (loc_valid(l)) {
@@ -350,7 +358,8 @@ IWRAM_CODE bool match() {
     for (int y = 0; y < 13; ++y) {
         for (int x = 0; x < 13; ++x) {
             loc_t   la = {.y = y, .x = x}, lb = {.y = y, .x = x + 1}, lc = {.y = y + 1, .x = x};
-            cell_t *a = &level[la.index], *b = &level[lb.index], *c = &level[lc.index];
+            cell_t *a = &game.level[la.index], *b = &game.level[lb.index],
+                   *c = &game.level[lc.index];
             if (!a->color) {
                 continue;
             }
@@ -381,7 +390,7 @@ IWRAM_CODE void remove_matches() {
     for (int y = 0; y < 14; ++y) {
         for (int x = 0; x < 14; ++x) {
             loc_t l = {.y = y, .x = x};
-            if (level[l.index].matched) {
+            if (game.level[l.index].matched) {
                 set_tile(l, TILE_EMPTY, 0, 0);
             }
         }
@@ -392,7 +401,7 @@ IWRAM_CODE bool done() {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            if (level[l.index].color) {
+            if (game.level[l.index].color) {
                 return false;
             }
         }
@@ -416,18 +425,18 @@ void draw_str(int x, int y, const char* s, int color) {
 }
 
 void load(int lvl) {
-    angle = 0;
+    game.angle = 0;
     for (size_t i = 28; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
-    bzero(level, sizeof(level));
+    bzero(game.level, sizeof(game.level));
     bzero(shadow.tilemap, sizeof(shadow.tilemap));
 
     const char* tiles = level_set[lvl].data;
-    width             = level_set[lvl].w;
-    height            = level_set[lvl].h;
-    for (u8 y = 0; y < height; ++y) {
-        for (u8 x = 0; x < width; ++x) {
+    game.width        = level_set[lvl].w;
+    game.height       = level_set[lvl].h;
+    for (u8 y = 0; y < game.height; ++y) {
+        for (u8 x = 0; x < game.width; ++x) {
             loc_t l     = {.x = x, .y = y};
             u8    links = 0;
             switch (*tiles) {
@@ -445,10 +454,11 @@ void load(int lvl) {
                 case 'E': set_tile(l, TILE_TARGET, 5, 0); break;
                 case 'e': set_tile(l, TILE_MARBLE, 5, 0); break;
                 default:
-                    links = (((y > 0) && (*tiles == tiles[-width])) ? LINK_UP : 0) |
-                            (((x < width - 1) && (*tiles == tiles[1])) ? LINK_RT : 0) |
-                            (((y < height - 1) && (*tiles == tiles[width])) ? LINK_DN : 0) |
-                            (((x > 0) && (*tiles == tiles[-1])) ? LINK_LT : 0);
+                    links =
+                        (((y > 0) && (*tiles == tiles[-game.width])) ? LINK_UP : 0) |
+                        (((x < game.width - 1) && (*tiles == tiles[1])) ? LINK_RT : 0) |
+                        (((y < game.height - 1) && (*tiles == tiles[game.width])) ? LINK_DN : 0) |
+                        (((x > 0) && (*tiles == tiles[-1])) ? LINK_LT : 0);
                     set_tile(l, TILE_BLOCK, 0, links);
                     break;
             }
@@ -465,7 +475,7 @@ void load(int lvl) {
 }
 
 play_result_t play_level(int lvl) {
-    state = GAME_IDLE;
+    game.state = GAME_IDLE;
     load(lvl);
 
     REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON;
@@ -476,9 +486,9 @@ play_result_t play_level(int lvl) {
     s16 turning   = 0;
     u16 delay     = 0;
 
-    if (check_gravity(angle)) {
-        state = GAME_FALL;
-        delay = 6;
+    if (check_gravity(game.angle)) {
+        game.state = GAME_FALL;
+        delay      = 6;
     }
     while (true) {
         rotate(delay);
@@ -497,20 +507,20 @@ play_result_t play_level(int lvl) {
 
         last_keys |= REG_KEYINPUT;
 
-        switch (state) {
+        switch (game.state) {
             case GAME_MENU: return PLAY_EXIT;
 
             case GAME_TURN:
-                angle += turning;
-                if (angle & 0x3F) {
+                game.angle += turning;
+                if (game.angle & 0x3F) {
                     continue;
                 }
 
-                if (check_gravity(angle)) {
-                    state = GAME_FALL;
-                    delay = 6;
+                if (check_gravity(game.angle)) {
+                    game.state = GAME_FALL;
+                    delay      = 6;
                 } else {
-                    state = GAME_IDLE;
+                    game.state = GAME_IDLE;
                 }
                 break;
 
@@ -521,41 +531,41 @@ play_result_t play_level(int lvl) {
 
                 remove_matches();
                 if (done()) {
-                    state = GAME_WIN;
-                    delay = 30;
-                } else if (check_gravity(angle)) {
-                    state = GAME_FALL;
-                    delay = 6;
+                    game.state = GAME_WIN;
+                    delay      = 30;
+                } else if (check_gravity(game.angle)) {
+                    game.state = GAME_FALL;
+                    delay      = 6;
                 } else {
-                    state = GAME_IDLE;
+                    game.state = GAME_IDLE;
                 }
                 break;
 
             case GAME_FALL:
-                drop(angle, --delay == 0);
+                drop(game.angle, --delay == 0);
                 if (delay) {
                     continue;
                 }
 
-                off_x = off_y = 0;
-                if (recheck_gravity(angle, true)) {
+                game.off_x = game.off_y = 0;
+                if (recheck_gravity(game.angle, true)) {
                     delay = 6;
                 } else if (match()) {
-                    state = GAME_CLEAR;
-                    delay = 12;
+                    game.state = GAME_CLEAR;
+                    delay      = 12;
                 } else {
-                    state = GAME_IDLE;
+                    game.state = GAME_IDLE;
                 }
                 break;
 
             case GAME_IDLE: {
                 u16 press = (~REG_KEYINPUT & last_keys);
                 if (press & (KEY_L | KEY_LEFT)) {
-                    state   = GAME_TURN;
-                    turning = +4;
+                    game.state = GAME_TURN;
+                    turning    = +4;
                 } else if (press & (KEY_R | KEY_RIGHT)) {
-                    state   = GAME_TURN;
-                    turning = -4;
+                    game.state = GAME_TURN;
+                    turning    = -4;
                 } else if (press & (KEY_SELECT)) {
                     return PLAY_EXIT;
                 } else if (press & (KEY_START)) {
@@ -712,7 +722,7 @@ IWRAM_CODE int main() {
 
     int lvl = 0;
     while (true) {
-        state = GAME_MENU;
+        game.state = GAME_MENU;
         select_level(&lvl);
         bool play = true;
         while (play) {
