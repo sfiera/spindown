@@ -152,7 +152,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         }
     }
 
-    int idx = 0;
+    int idx = 28;
     s8  cx  = (6 * width) - 6;
     s8  cy  = (6 * height) - 6;
     for (loc_t l = {.index = 0}; l.index < 14 * 16; ++l.index) {
@@ -415,7 +415,7 @@ void draw_str(int x, int y, const char* s, int color) {
 }
 
 void load(int lvl) {
-    for (size_t i = 0; i < 128; ++i) {
+    for (size_t i = 28; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
     bzero(level, sizeof(level));
@@ -574,13 +574,16 @@ play_result_t play_level(int lvl) {
 }
 
 void highlight_level(int lvl, bool on) {
-    int x = (lvl % 10) * 3;
-    int y = (lvl / 10) * 3;
+    if (on) {
+        int x = (lvl % 10) * 24;
+        int y = (lvl / 10) * 24 + 21;
 
-    MAP[10][y + 2][x + 0] = on ? 0x0101 : 0;
-    MAP[10][y + 2][x + 3] = on ? 0x0501 : 0;
-    MAP[10][y + 5][x + 0] = on ? 0x0901 : 0;
-    MAP[10][y + 5][x + 3] = on ? 0x0D01 : 0;
+        shadow.sprites[0].attr0 = y;
+        shadow.sprites[0].attr1 = x | OBJ_SIZE(2);
+        shadow.sprites[0].attr2 = 92;
+    } else {
+        shadow.sprites[0].attr0 = 191;
+    }
 }
 
 bool valid_level(int lvl) { return level_set[lvl].w; }
@@ -590,8 +593,6 @@ bool change_level(int* lvl, int mod) {
     if ((lvl2 < 0) || (50 <= lvl2)) {
         return false;
     }
-    highlight_level(*lvl, false);
-    highlight_level(lvl2, true);
     load(lvl2);
     *lvl = lvl2;
     return true;
@@ -618,7 +619,6 @@ IWRAM_CODE void select_level(int* lvl) {
             }
         }
     }
-    highlight_level(*lvl, true);
     REG_BG0HOFS = 4;
 
     REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON;
@@ -638,9 +638,11 @@ IWRAM_CODE void select_level(int* lvl) {
             change_level(lvl, -1);
         } else if (press & (KEY_START | KEY_A)) {
             if (valid_level(*lvl)) {
+                highlight_level(*lvl, false);
                 return;
             }
         }
+        highlight_level(*lvl, true);
         last_keys = REG_KEYINPUT;
 
         VBlankIntrWait();
@@ -688,7 +690,7 @@ IWRAM_CODE int main() {
         OBJ_COLORS[i + 128] = color.value;
     }
     for (size_t i = 0; i < 128; ++i) {
-        OAM[i].attr0 = 191;
+        shadow.sprites[i].attr0 = OAM[i].attr0 = 191;
     }
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8) | BG_PRIORITY(1);
     REG_BG0CNT = BG_SIZE_0 | BG_16_COLOR | CHAR_BASE(0) | SCREEN_BASE(10);
