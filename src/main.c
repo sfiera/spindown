@@ -112,7 +112,7 @@ typedef struct {
 
 static const cell_t tile_empty = {.type = TILE_EMPTY};
 
-IWRAM_DATA union {
+typedef union {
     cell_t reserved[16 * 16];
     struct {
         cell_t       level[14 * 16];
@@ -121,10 +121,14 @@ IWRAM_DATA union {
         u8           width, height;
         u8           off_x, off_y;
     };
-} game = {
+} game_t;
+
+IWRAM_DATA game_t game = {
     .state = GAME_MENU,
     .angle = 0,
 };
+EWRAM_DATA game_t init;
+EWRAM_DATA game_t undo;
 
 IWRAM_DATA struct {
     union {
@@ -409,12 +413,6 @@ IWRAM_CODE bool done() {
     return true;
 }
 
-typedef enum {
-    PLAY_EXIT,
-    PLAY_WIN,
-    PLAY_AGAIN,
-} play_result_t;
-
 void draw_str(int x, int y, const char* s, int color) {
     for (int i = 0; i < strlen(s); ++i) {
         char ch = (s[i] & 0x0F) | ((s[i] & 0xF0) << 1);
@@ -474,7 +472,7 @@ void load(int lvl) {
     rotate(0);
 }
 
-play_result_t play_level(int lvl) {
+bool play_level(int lvl) {
     game.state = GAME_IDLE;
     load(lvl);
 
@@ -486,6 +484,7 @@ play_result_t play_level(int lvl) {
     s16 turning   = 0;
     u16 delay     = 0;
 
+    undo = init = game;
     if (check_gravity(game.angle)) {
         game.state = GAME_FALL;
         delay      = 6;
@@ -508,7 +507,7 @@ play_result_t play_level(int lvl) {
         last_keys |= REG_KEYINPUT;
 
         switch (game.state) {
-            case GAME_MENU: return PLAY_EXIT;
+            case GAME_MENU: return false;
 
             case GAME_TURN:
                 game.angle += turning;
@@ -561,15 +560,20 @@ play_result_t play_level(int lvl) {
             case GAME_IDLE: {
                 u16 press = (~REG_KEYINPUT & last_keys);
                 if (press & (KEY_L | KEY_LEFT)) {
+                    undo       = game;
                     game.state = GAME_TURN;
                     turning    = +4;
                 } else if (press & (KEY_R | KEY_RIGHT)) {
+                    undo       = game;
                     game.state = GAME_TURN;
                     turning    = -4;
+                } else if (press & (KEY_B)) {
+                    game = undo;
                 } else if (press & (KEY_SELECT)) {
-                    return PLAY_EXIT;
+                    undo = game;
+                    game = init;
                 } else if (press & (KEY_START)) {
-                    return PLAY_AGAIN;
+                    return false;
                 }
                 last_keys = REG_KEYINPUT;
                 break;
@@ -579,7 +583,7 @@ play_result_t play_level(int lvl) {
                 if (--delay) {
                     continue;
                 }
-                return PLAY_WIN;
+                return true;
         }
     }
 }
@@ -726,10 +730,10 @@ IWRAM_CODE int main() {
         select_level(&lvl);
         bool play = true;
         while (play) {
-            switch (play_level(lvl)) {
-                case PLAY_WIN: play = change_level(&lvl, 1) && valid_level(lvl); break;
-                case PLAY_EXIT: play = false; break;
-                case PLAY_AGAIN: continue;
+            if (play_level(lvl)) {
+                play = change_level(&lvl, 1) && valid_level(lvl);
+            } else {
+                play = false;
             }
         }
     }
