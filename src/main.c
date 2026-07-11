@@ -23,7 +23,8 @@ typedef enum {
     GAME_CLEAR,
     GAME_WIN,
 } game_state_t;
-game_state_t state = GAME_MENU;
+IWRAM_DATA game_state_t state = GAME_MENU;
+IWRAM_DATA u8           angle = 0;
 
 typedef enum {
     TILE_SOLID   = 1 << 0,
@@ -131,7 +132,7 @@ IWRAM_DATA struct {
     s32 x, y;
 } bg2;
 
-IWRAM_CODE void rotate(u8 angle, u8 matching) {
+IWRAM_CODE void rotate(u8 matching) {
     s16 cos = sin_table[(angle + 64) & 0xFF];
     s16 sin = sin_table[angle];
     bg2.pa  = 2 * cos;
@@ -415,6 +416,7 @@ void draw_str(int x, int y, const char* s, int color) {
 }
 
 void load(int lvl) {
+    angle = 0;
     for (size_t i = 28; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
@@ -459,7 +461,7 @@ void load(int lvl) {
     bzero(MAP[10][18], sizeof(MAP[10][0]));
     bzero(MAP[10][19], sizeof(MAP[10][1]));
     draw_str(start, 18, level_set[lvl].title, 6);
-    rotate(0, 0);
+    rotate(0);
 }
 
 play_result_t play_level(int lvl) {
@@ -474,13 +476,12 @@ play_result_t play_level(int lvl) {
     s16 turning   = 0;
     u16 delay     = 0;
 
-    u8 angle = 0;
     if (check_gravity(angle)) {
         state = GAME_FALL;
         delay = 6;
     }
     while (true) {
-        rotate(angle, delay);
+        rotate(delay);
 
         VBlankIntrWait();
 
