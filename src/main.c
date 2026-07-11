@@ -490,11 +490,8 @@ play_result_t play_level(int lvl) {
         REG_BG2PD = bg2.pd;
         REG_BG2X  = bg2.x;
         REG_BG2Y  = bg2.y;
-        DMA3COPY(&shadow.sprites, OAM, 128 | DMA16 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[0], MAP_BASE_ADR(8), 224 | DMA32 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[896], MAP_BASE_ADR(8) + 896, 224 | DMA32 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[1792], MAP_BASE_ADR(8) + 1792, 224 | DMA32 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.sprites, OAM, 256 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[0], MAP_BASE_ADR(8), (56 * 64 / 4) | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.palette, BG_COLORS, (tilesPalLen / 4) | DMA32 | DMA_IMMEDIATE);
 
         last_keys |= REG_KEYINPUT;
@@ -654,11 +651,8 @@ IWRAM_CODE void select_level(int* lvl) {
         REG_BG2PD = bg2.pd;
         REG_BG2X  = bg2.x;
         REG_BG2Y  = bg2.y;
-        DMA3COPY(&shadow.sprites, OAM, 128 | DMA16 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[0], MAP_BASE_ADR(8), 224 | DMA32 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[896], MAP_BASE_ADR(8) + 896, 224 | DMA32 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[1792], MAP_BASE_ADR(8) + 1792, 224 | DMA32 | DMA_IMMEDIATE);
-        DMA3COPY(&shadow.tilemap[2688], MAP_BASE_ADR(8) + 2688, 224 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.sprites, OAM, 256 | DMA32 | DMA_IMMEDIATE);
+        DMA3COPY(&shadow.tilemap[0], MAP_BASE_ADR(8), (56 * 64 / 4) | DMA32 | DMA_IMMEDIATE);
         DMA3COPY(&shadow.palette, BG_COLORS, (tilesPalLen / 4) | DMA32 | DMA_IMMEDIATE);
     }
 }
