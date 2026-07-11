@@ -168,7 +168,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
         }
         u8 tile = 64, ox = 80 - 6, oy = 120 - 6;
         if (cell->matched) {
-            tile += 12 - ((matching - 1) & 0x0C) + (cell->slides ? 0 : 16);
+            tile += 6 - (((matching - 1) & 0x0C) >> 1) + (cell->slides ? 0 : 8);
             ox -= 2;
             oy -= 2;
         }
@@ -181,7 +181,7 @@ IWRAM_CODE void rotate(u8 angle, u8 matching) {
                        ATTR2_PALETTE(cell->color - 1 + (state == GAME_MENU ? 8 : 0));
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
-            s->attr2 = (links * 4) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
+            s->attr2 = (links * 2) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
         }
     }
     while (idx < 128) {
@@ -466,7 +466,7 @@ play_result_t play_level(int lvl) {
     state = GAME_IDLE;
     load(lvl);
 
-    REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON | OBJ_1D_MAP;
+    REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON;
     REG_BLDCNT  = 0;
     REG_BLDY    = 0;
 
@@ -624,7 +624,7 @@ IWRAM_CODE void select_level(int* lvl) {
     highlight_level(*lvl, true);
     REG_BG0HOFS = 4;
 
-    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | OBJ_1D_MAP;
+    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON;
     REG_BLDCNT  = 0x0C4;
     REG_BLDY    = 0x0A;
 
