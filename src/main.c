@@ -512,6 +512,8 @@ bool play_level(int lvl) {
                 if (game.angle & 0x3F) {
                     continue;
                 }
+                REG_SOUND4CNT_L = 0x0000;  // frequency
+                REG_SOUND4CNT_H = 0x8000;  // frequency
 
                 if (check_gravity(game.angle)) {
                     game.state = GAME_FALL;
@@ -558,13 +560,17 @@ bool play_level(int lvl) {
             case GAME_IDLE: {
                 u16 press = (~REG_KEYINPUT & last_keys);
                 if (press & (KEY_L | KEY_LEFT)) {
-                    undo       = game;
-                    game.state = GAME_TURN;
-                    turning    = +4;
+                    undo            = game;
+                    game.state      = GAME_TURN;
+                    turning         = +4;
+                    REG_SOUND4CNT_L = 0x7000;  // frequency
+                    REG_SOUND4CNT_H = 0x8067;  // frequency
                 } else if (press & (KEY_R | KEY_RIGHT)) {
-                    undo       = game;
-                    game.state = GAME_TURN;
-                    turning    = -4;
+                    undo            = game;
+                    game.state      = GAME_TURN;
+                    turning         = -4;
+                    REG_SOUND4CNT_L = 0x7000;  // frequency
+                    REG_SOUND4CNT_H = 0x8067;  // frequency
                 } else if (press & (KEY_B)) {
                     game = undo;
                 } else if (press & (KEY_SELECT)) {
@@ -716,6 +722,8 @@ IWRAM_CODE int main() {
     REG_SOUND1CNT_X = 0;       // frequency
     REG_SOUND2CNT_L = 0xF181;  // envelope, length
     REG_SOUND2CNT_H = 0;       // frequency
+    REG_SOUND4CNT_L = 0x3000;  // envelope, length
+    REG_SOUND4CNT_H = 0;       // frequency
 
     INT_VECTOR = interrupt;
     REG_DISPSTAT |= LCDC_VBL;
