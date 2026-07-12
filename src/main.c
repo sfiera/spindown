@@ -25,18 +25,18 @@ typedef enum {
 } game_state_t;
 
 typedef enum {
-    TILE_SOLID   = 1 << 0,
+    TILE_OPEN    = 1 << 0,
     TILE_TALL    = 1 << 1,
     TILE_COLORED = 1 << 2,
     TILE_SLIDES  = 1 << 3,
 } tile_flag_t;
 
 typedef enum {
-    TILE_EMPTY   = 0,
-    TILE_OUTSIDE = TILE_SOLID,
-    TILE_WALL    = TILE_SOLID | TILE_TALL,
+    TILE_OUTSIDE = 0,
+    TILE_EMPTY   = TILE_OPEN,
+    TILE_WALL    = TILE_TALL,
     TILE_BLOCK   = TILE_SLIDES,
-    TILE_TARGET  = TILE_COLORED | TILE_SOLID | TILE_TALL,
+    TILE_TARGET  = TILE_COLORED | TILE_TALL,
     TILE_MARBLE  = TILE_COLORED | TILE_SLIDES,
 } tile_type_t;
 
@@ -95,7 +95,7 @@ typedef struct {
             u8 flags : 4;
         };
         struct {
-            u8 solid : 1;
+            u8 open : 1;
             u8 tall : 1;
             u8 colored : 1;
             u8 slides : 1;
@@ -144,6 +144,23 @@ IWRAM_DATA struct {
     s32 x, y;
 } bg2;
 
+void fill(loc_t l, u8 value) {
+    u8 x = l.x * 3;
+    u8 y = l.y * 3;
+
+    const u8* src               = &tilesMetaTiles[tilesMetaMap[value * 2] * 9];
+    int       index             = (y << 6) | x;
+    shadow.tilemap[index + 0]   = *(src++);
+    shadow.tilemap[index + 1]   = *(src++);
+    shadow.tilemap[index + 2]   = *(src++);
+    shadow.tilemap[index + 64]  = *(src++);
+    shadow.tilemap[index + 65]  = *(src++);
+    shadow.tilemap[index + 66]  = *(src++);
+    shadow.tilemap[index + 128] = *(src++);
+    shadow.tilemap[index + 129] = *(src++);
+    shadow.tilemap[index + 130] = *(src++);
+}
+
 IWRAM_CODE void rotate(u8 matching) {
     s16 cos = sin_table[(game.angle + 64) & 0xFF];
     s16 sin = sin_table[game.angle];
@@ -169,10 +186,22 @@ IWRAM_CODE void rotate(u8 matching) {
     s8  cx  = (6 * game.width) - 6;
     s8  cy  = (6 * game.height) - 6;
     for (loc_t l = {.index = 0}; l.index < 14 * 16; ++l.index) {
-        const cell_t* cell = &game.level[l.index];
-        if (!cell->has_sprite) {
+        if (!loc_valid(l)) {
             continue;
         }
+        const cell_t* cell = &game.level[l.index];
+        if (!cell->has_sprite) {
+            switch (cell->type) {
+                case TILE_BLOCK: fill(l, 16 | cell->links); break;
+                case TILE_TARGET: fill(l, 7 + cell->color); break;
+                case TILE_MARBLE:
+                case TILE_EMPTY: fill(l, 0); break;
+                case TILE_WALL: fill(l, 1); break;
+                case TILE_OUTSIDE: fill(l, 2); break;
+            }
+            continue;
+        }
+        fill(l, 0);
         s8 x = cx - l.x * 12;
         s8 y = cy - l.y * 12;
         if (cell->falling) {
@@ -202,23 +231,6 @@ IWRAM_CODE void rotate(u8 matching) {
     }
 }
 
-void fill(loc_t l, u8 value) {
-    u8 x = l.x * 3;
-    u8 y = l.y * 3;
-
-    const u8* src               = &tilesMetaTiles[tilesMetaMap[value * 2] * 9];
-    int       index             = (y << 6) | x;
-    shadow.tilemap[index + 0]   = *(src++);
-    shadow.tilemap[index + 1]   = *(src++);
-    shadow.tilemap[index + 2]   = *(src++);
-    shadow.tilemap[index + 64]  = *(src++);
-    shadow.tilemap[index + 65]  = *(src++);
-    shadow.tilemap[index + 66]  = *(src++);
-    shadow.tilemap[index + 128] = *(src++);
-    shadow.tilemap[index + 129] = *(src++);
-    shadow.tilemap[index + 130] = *(src++);
-}
-
 void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
     cell_t* cell     = &game.level[l.index];
     cell->type       = type;
@@ -226,15 +238,6 @@ void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
     cell->links      = links;
     cell->matched    = false;
     cell->has_sprite = type == TILE_MARBLE;
-
-    switch (type) {
-        case TILE_BLOCK: fill(l, 16 | links); break;
-        case TILE_TARGET: fill(l, 7 + color); break;
-        case TILE_MARBLE:
-        case TILE_EMPTY: fill(l, 0); break;
-        case TILE_WALL: fill(l, 1); break;
-        case TILE_OUTSIDE: fill(l, 2); break;
-    }
 }
 
 IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
@@ -255,7 +258,6 @@ IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
 
     if (!cell->color) {
         cell->has_sprite = false;
-        fill(l, 16 | cell->links);
     }
 
     add_support(l_up, up, right, link, false);
@@ -332,7 +334,6 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
         }
         if (!cell->has_sprite) {
             cell->has_sprite = true;
-            fill(l, 0);
         }
         if (done) {
             *prev = *cell;
@@ -375,15 +376,12 @@ IWRAM_CODE bool match() {
             }
             if (a->matched && !a->has_sprite) {
                 a->has_sprite = true;
-                fill(la, 0);
             }
             if (b->matched && !b->has_sprite) {
                 b->has_sprite = true;
-                fill(lb, 0);
             }
             if (c->matched && !c->has_sprite) {
                 c->has_sprite = true;
-                fill(lc, 0);
             }
         }
     }
