@@ -120,6 +120,7 @@ typedef union {
         u8           angle;
         u8           width, height;
         u8           off_x, off_y;
+        u16          steps;
     };
 } game_t;
 
@@ -179,6 +180,29 @@ IWRAM_CODE void rotate(u8 matching) {
         }
         for (int j = 0; j < 8; ++j) {
             shadow.palette[i + 6 + j] = tilesPal[i + 6 + ((j + 8 - a8) % 8)];
+        }
+    }
+
+    if (game.state != GAME_MENU) {
+        u16 steps               = game.steps;
+        shadow.sprites[0].attr0 = 143 | OBJ_SHAPE(2);
+        shadow.sprites[0].attr1 = 230;
+        shadow.sprites[0].attr2 = 0x150 | (steps % 10) | ATTR2_PALETTE(6);
+        steps /= 10;
+        if (steps) {
+            shadow.sprites[1].attr0 = 143 | OBJ_SHAPE(2);
+            shadow.sprites[1].attr1 = 222;
+            shadow.sprites[1].attr2 = 0x150 | (steps % 10) | ATTR2_PALETTE(6);
+            steps /= 10;
+        } else {
+            shadow.sprites[1].attr0 = 191;
+        }
+        if (steps) {
+            shadow.sprites[2].attr0 = 143 | OBJ_SHAPE(2);
+            shadow.sprites[2].attr1 = 214;
+            shadow.sprites[2].attr2 = 0x150 | (steps % 10) | ATTR2_PALETTE(6);
+        } else {
+            shadow.sprites[2].attr0 = 191;
         }
     }
 
@@ -422,7 +446,7 @@ void draw_str(int x, int y, const char* s, int color) {
 
 void load(int lvl) {
     game.angle = 0;
-    for (size_t i = 28; i < 128; ++i) {
+    for (size_t i = 1; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
     bzero(game.level, sizeof(game.level));
@@ -472,6 +496,7 @@ void load(int lvl) {
 
 bool play_level(int lvl) {
     game.state = GAME_IDLE;
+    game.steps = 0;
     load(lvl);
 
     REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON;
@@ -560,14 +585,16 @@ bool play_level(int lvl) {
             case GAME_IDLE: {
                 u16 press = (~REG_KEYINPUT & last_keys);
                 if (press & (KEY_L | KEY_LEFT)) {
-                    undo            = game;
-                    game.state      = GAME_TURN;
+                    undo       = game;
+                    game.state = GAME_TURN;
+                    ++game.steps;
                     turning         = +4;
                     REG_SOUND4CNT_L = 0x7000;  // frequency
                     REG_SOUND4CNT_H = 0x8067;  // frequency
                 } else if (press & (KEY_R | KEY_RIGHT)) {
-                    undo            = game;
-                    game.state      = GAME_TURN;
+                    undo       = game;
+                    game.state = GAME_TURN;
+                    ++game.steps;
                     turning         = -4;
                     REG_SOUND4CNT_L = 0x7000;  // frequency
                     REG_SOUND4CNT_H = 0x8067;  // frequency
