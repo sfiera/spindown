@@ -413,10 +413,10 @@ IWRAM_CODE bool done() {
 
 void draw_str(int x, int y, const char* s, int color) {
     for (int i = 0; i < strlen(s); ++i) {
-        char ch = (s[i] & 0x0F) | ((s[i] & 0xF0) << 1);
+        char ch = (s[i] & 0x1F) | ((s[i] & 0xE0) << 1);
 
         MAP[10][y + 0][i + x] = 0x100 | ch | (color << 12);
-        MAP[10][y + 1][i + x] = 0x110 | ch | (color << 12);
+        MAP[10][y + 1][i + x] = 0x120 | ch | (color << 12);
     }
 }
 
@@ -629,9 +629,9 @@ IWRAM_CODE void select_level(int* lvl) {
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 10; ++x) {
             int color                     = (valid_level(l++) ? 6 : 5) << 12;
-            MAP[10][3 * y + 3][3 * x + 1] = 0x160 | (i >> 4) | color;
+            MAP[10][3 * y + 3][3 * x + 1] = 0x150 | (i >> 4) | color;
             MAP[10][3 * y + 4][3 * x + 1] = 0x170 | (i >> 4) | color;
-            MAP[10][3 * y + 3][3 * x + 2] = 0x160 | (i & 0xF) | color;
+            MAP[10][3 * y + 3][3 * x + 2] = 0x150 | (i & 0xF) | color;
             MAP[10][3 * y + 4][3 * x + 2] = 0x170 | (i & 0xF) | color;
             if ((++i & 0xF) == 10) {
                 i += (0x10 - 10);
@@ -688,6 +688,7 @@ IWRAM_CODE int main() {
     for (size_t i = 0; i < orbsTilesLen / 2; ++i) {
         SPRITE_GFX[i] = orbsTiles[i];
     }
+    memcpy(&SPRITE_GFX[0x1000], uiTiles, uiTilesLen);
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     memcpy(PATRAM4(0, 256), uiTiles, uiTilesLen);
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
