@@ -685,8 +685,6 @@ void highlight_level(int lvl, bool on) {
     }
 }
 
-bool valid_level(int lvl) { return level_set[lvl].w; }
-
 bool change_level(int* lvl, int mod) {
     int lvl2 = *lvl + mod;
     if ((lvl2 < 0) || (50 <= lvl2)) {
@@ -705,10 +703,9 @@ IWRAM_CODE void select_level(int* lvl) {
     draw_str(8, 21, "(C)2026 SFIERA", 6);
 
     int i = 0x01;
-    int l = 0;
     for (int y = 0; y < 5; ++y) {
         for (int x = 0; x < 10; ++x) {
-            int color                     = (valid_level(l++) ? 6 : 5) << 12;
+            int color                     = 6 << 12;
             MAP[10][3 * y + 3][3 * x + 1] = 0x150 | (i >> 4) | color;
             MAP[10][3 * y + 4][3 * x + 1] = 0x170 | (i >> 4) | color;
             MAP[10][3 * y + 3][3 * x + 2] = 0x150 | (i & 0xF) | color;
@@ -736,10 +733,7 @@ IWRAM_CODE void select_level(int* lvl) {
         } else if (press & KEY_LEFT) {
             change_level(lvl, -1);
         } else if (press & (KEY_START | KEY_A)) {
-            if (valid_level(*lvl)) {
-                highlight_level(*lvl, false);
-                return;
-            }
+            return;
         }
         highlight_level(*lvl, true);
         last_keys = REG_KEYINPUT;
@@ -818,7 +812,7 @@ IWRAM_CODE int main() {
         bool play = true;
         while (play) {
             if (play_level(lvl)) {
-                play = change_level(&lvl, 1) && valid_level(lvl);
+                play = change_level(&lvl, 1);
             } else {
                 play = false;
             }
