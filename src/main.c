@@ -128,8 +128,6 @@ IWRAM_DATA game_t game = {
     .state = GAME_MENU,
     .angle = 0,
 };
-EWRAM_DATA game_t init;
-EWRAM_DATA game_t undo;
 
 IWRAM_DATA struct {
     union {
@@ -494,6 +492,70 @@ void load(int lvl) {
     rotate(0);
 }
 
+enum {
+    UNDO_MAX = 128,
+};
+EWRAM_BSS game_t init;
+EWRAM_BSS game_t undo_history[UNDO_MAX];
+IWRAM_DATA u8    undo_oldest;
+IWRAM_DATA u8    undo_current;
+IWRAM_DATA u8    undo_newest;
+
+u8 undo_size() { return (u8)(undo_newest - undo_oldest) % UNDO_MAX; }
+u8 available_undo_count() { return (u8)(undo_current - undo_oldest) % UNDO_MAX; }
+u8 available_redo_count() { return (u8)(undo_newest - undo_current) % UNDO_MAX; }
+
+void init_undo() {
+    undo_history[0] = init = game;
+    undo_oldest = undo_current = undo_newest = 0;
+}
+
+void record_undo() {
+    if (undo_size() == (UNDO_MAX - 1)) {
+        undo_oldest = (undo_oldest + 1) % UNDO_MAX;
+    }
+    undo_history[undo_current] = game;
+    undo_newest = undo_current = (undo_current + 1) % UNDO_MAX;
+}
+
+void undo() {
+    if (!available_undo_count()) {
+        return;
+    }
+    undo_current    = (u8)(undo_current - 1) % UNDO_MAX;
+    game_t* curr    = &undo_history[undo_current];
+    game_t  temp    = game;
+    game            = *curr;
+    *curr           = temp;
+    REG_SOUND1CNT_X = 0x86B4;  // frequency
+}
+
+void redo() {
+    if (!available_redo_count()) {
+        return;
+    }
+    game_t* curr    = &undo_history[undo_current];
+    game_t  temp    = game;
+    game            = *curr;
+    *curr           = temp;
+    undo_current    = (undo_current + 1) % UNDO_MAX;
+    REG_SOUND1CNT_X = 0x86B4;  // frequency
+}
+
+void turn(s16* turning, s16 dir) {
+    record_undo();
+    game.state = GAME_TURN;
+    ++game.steps;
+    *turning        = dir;
+    REG_SOUND4CNT_L = 0x7000;  // frequency
+    REG_SOUND4CNT_H = 0x8067;  // frequency
+}
+
+void restart() {
+    record_undo();
+    game = init;
+}
+
 bool play_level(int lvl) {
     game.state = GAME_IDLE;
     game.steps = 0;
@@ -507,7 +569,7 @@ bool play_level(int lvl) {
     s16 turning   = 0;
     u16 delay     = 0;
 
-    undo = init = game;
+    init_undo();
     if (check_gravity(game.angle)) {
         game.state = GAME_FALL;
         delay      = 6;
@@ -585,24 +647,15 @@ bool play_level(int lvl) {
             case GAME_IDLE: {
                 u16 press = (~REG_KEYINPUT & last_keys);
                 if (press & (KEY_L | KEY_LEFT)) {
-                    undo       = game;
-                    game.state = GAME_TURN;
-                    ++game.steps;
-                    turning         = +4;
-                    REG_SOUND4CNT_L = 0x7000;  // frequency
-                    REG_SOUND4CNT_H = 0x8067;  // frequency
+                    turn(&turning, +4);
                 } else if (press & (KEY_R | KEY_RIGHT)) {
-                    undo       = game;
-                    game.state = GAME_TURN;
-                    ++game.steps;
-                    turning         = -4;
-                    REG_SOUND4CNT_L = 0x7000;  // frequency
-                    REG_SOUND4CNT_H = 0x8067;  // frequency
+                    turn(&turning, -4);
                 } else if (press & (KEY_B)) {
-                    game = undo;
+                    undo();
+                } else if (press & (KEY_A)) {
+                    redo();
                 } else if (press & (KEY_SELECT)) {
-                    undo = game;
-                    game = init;
+                    restart();
                 } else if (press & (KEY_START)) {
                     return false;
                 }
