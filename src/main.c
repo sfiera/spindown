@@ -75,6 +75,18 @@ typedef union {
 static inline bool loc_valid(loc_t l) { return (l.x < 14) && (l.y < 14); }
 
 enum {
+    LOC_UP = -16,
+    LOC_RT = +1,
+    LOC_DN = +16,
+    LOC_LT = -1,
+
+    LOC_UL = (0 * LOC_DN) + (0 * LOC_RT),
+    LOC_UR = (0 * LOC_DN) + (13 * LOC_RT),
+    LOC_LL = (13 * LOC_DN) + (0 * LOC_RT),
+    LOC_LR = (13 * LOC_DN) + (13 * LOC_RT),
+};
+
+enum {
     ANGLE_UP = 0,
     ANGLE_RT = 1,
     ANGLE_DN = 2,
@@ -316,10 +328,10 @@ IWRAM_CODE bool recheck_gravity(u8 angle, bool sound) {
     s8    up, right;
     u8    link;
     switch (angle >> 6) {
-        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, link = LINK_RT; break;
-        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, link = LINK_DN; break;
-        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, link = LINK_LT; break;
-        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, link = LINK_UP; break;
+        case ANGLE_UP: l.index = LOC_LL, up = LOC_UP, right = LOC_RT, link = LINK_RT; break;
+        case ANGLE_RT: l.index = LOC_UL, up = LOC_RT, right = LOC_DN, link = LINK_DN; break;
+        case ANGLE_DN: l.index = LOC_UR, up = LOC_DN, right = LOC_LT, link = LINK_LT; break;
+        case ANGLE_LT: l.index = LOC_LR, up = LOC_LT, right = LOC_UP, link = LINK_UP; break;
     }
     while (loc_valid(l)) {
         check_gravity_column(l, up, right, link, sound);
@@ -368,10 +380,10 @@ IWRAM_CODE void drop(u8 angle, bool done) {
     loc_t l;
     s8    up, right;
     switch (angle >> 6) {
-        case ANGLE_UP: l.x = 0, l.y = 13, up = -16, right = +1, game.off_y -= 2; break;
-        case ANGLE_RT: l.x = 0, l.y = 0, up = +1, right = +16, game.off_x += 2; break;
-        case ANGLE_DN: l.x = 13, l.y = 0, up = +16, right = -1, game.off_y += 2; break;
-        case ANGLE_LT: l.x = 13, l.y = 13, up = -1, right = -16, game.off_x -= 2; break;
+        case ANGLE_UP: l.index = LOC_LL, up = LOC_UP, right = LOC_RT, game.off_y -= 2; break;
+        case ANGLE_RT: l.index = LOC_UL, up = LOC_RT, right = LOC_DN, game.off_x += 2; break;
+        case ANGLE_DN: l.index = LOC_UR, up = LOC_DN, right = LOC_LT, game.off_y += 2; break;
+        case ANGLE_LT: l.index = LOC_LR, up = LOC_LT, right = LOC_UP, game.off_x -= 2; break;
     }
 
     while (loc_valid(l)) {
