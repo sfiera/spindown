@@ -323,11 +323,11 @@ IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link, bool sou
     }
 }
 
-IWRAM_CODE bool recheck_gravity(u8 angle, bool sound) {
+IWRAM_CODE bool recheck_gravity(bool sound) {
     loc_t l;
     s8    up, right;
     u8    link;
-    switch (angle >> 6) {
+    switch (game.angle >> 6) {
         case ANGLE_UP: l.index = LOC_LL, up = LOC_UP, right = LOC_RT, link = LINK_RT; break;
         case ANGLE_RT: l.index = LOC_UL, up = LOC_RT, right = LOC_DN, link = LINK_DN; break;
         case ANGLE_DN: l.index = LOC_UR, up = LOC_DN, right = LOC_LT, link = LINK_LT; break;
@@ -348,14 +348,14 @@ IWRAM_CODE bool recheck_gravity(u8 angle, bool sound) {
     return false;
 }
 
-IWRAM_CODE bool check_gravity(u8 angle) {
+IWRAM_CODE bool check_gravity() {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
             game.level[l.index].falling = game.level[l.index].slides;
         }
     }
-    return recheck_gravity(angle, false);
+    return recheck_gravity(false);
 }
 
 IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
@@ -376,10 +376,10 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
     }
 }
 
-IWRAM_CODE void drop(u8 angle, bool done) {
+IWRAM_CODE void drop(bool done) {
     loc_t l;
     s8    up, right;
-    switch (angle >> 6) {
+    switch (game.angle >> 6) {
         case ANGLE_UP: l.index = LOC_LL, up = LOC_UP, right = LOC_RT, game.off_y -= 2; break;
         case ANGLE_RT: l.index = LOC_UL, up = LOC_RT, right = LOC_DN, game.off_x += 2; break;
         case ANGLE_DN: l.index = LOC_UR, up = LOC_DN, right = LOC_LT, game.off_y += 2; break;
@@ -582,7 +582,7 @@ bool play_level(int lvl) {
     u16 delay     = 0;
 
     init_undo();
-    if (check_gravity(game.angle)) {
+    if (check_gravity()) {
         game.state = GAME_FALL;
         delay      = 6;
     }
@@ -614,7 +614,7 @@ bool play_level(int lvl) {
                 REG_SOUND4CNT_L = 0x0000;  // frequency
                 REG_SOUND4CNT_H = 0x8000;  // frequency
 
-                if (check_gravity(game.angle)) {
+                if (check_gravity()) {
                     game.state = GAME_FALL;
                     delay      = 6;
                 } else {
@@ -631,7 +631,7 @@ bool play_level(int lvl) {
                 if (done()) {
                     game.state = GAME_WIN;
                     delay      = 30;
-                } else if (check_gravity(game.angle)) {
+                } else if (check_gravity()) {
                     game.state = GAME_FALL;
                     delay      = 6;
                 } else {
@@ -640,13 +640,13 @@ bool play_level(int lvl) {
                 break;
 
             case GAME_FALL:
-                drop(game.angle, --delay == 0);
+                drop(--delay == 0);
                 if (delay) {
                     continue;
                 }
 
                 game.off_x = game.off_y = 0;
-                if (recheck_gravity(game.angle, true)) {
+                if (recheck_gravity(true)) {
                     delay = 6;
                 } else if (match()) {
                     game.state = GAME_CLEAR;
