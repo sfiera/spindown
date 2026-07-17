@@ -136,6 +136,7 @@ typedef union {
     };
 } game_t;
 
+IWRAM_DATA u8     level_index;
 IWRAM_DATA game_t game = {
     .state = GAME_MENU,
     .angle = 0,
@@ -454,7 +455,7 @@ void draw_str(int x, int y, const char* s, int color) {
     }
 }
 
-void load(int lvl) {
+void load() {
     game.angle = 0;
     for (size_t i = 1; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
@@ -462,9 +463,10 @@ void load(int lvl) {
     bzero(game.cells, sizeof(game.cells));
     bzero(shadow.tilemap, sizeof(shadow.tilemap));
 
-    const char* tiles = level_set[lvl].data;
-    game.width        = level_set[lvl].w;
-    game.height       = level_set[lvl].h;
+    const level_t* level = &level_set[level_index];
+    const char*    tiles = level->data;
+    game.width           = level->w;
+    game.height          = level->h;
     for (u8 y = 0; y < game.height; ++y) {
         for (u8 x = 0; x < game.width; ++x) {
             loc_t l     = {.x = x, .y = y};
@@ -496,11 +498,11 @@ void load(int lvl) {
         }
     }
 
-    int len   = strlen(level_set[lvl].title);
+    int len   = strlen(level->title);
     int start = (31 - len) / 2;
     bzero(MAP[10][18], sizeof(MAP[10][0]));
     bzero(MAP[10][19], sizeof(MAP[10][1]));
-    draw_str(start, 18, level_set[lvl].title, 6);
+    draw_str(start, 18, level->title, 6);
     rotate(0);
 }
 
@@ -568,10 +570,10 @@ void restart() {
     game = init;
 }
 
-bool play_level(int lvl) {
+bool play_level() {
     game.state = GAME_IDLE;
     game.steps = 0;
-    load(lvl);
+    load();
 
     REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON;
     REG_BLDCNT  = 0;
@@ -684,10 +686,10 @@ bool play_level(int lvl) {
     }
 }
 
-void highlight_level(int lvl, bool on) {
+void highlight_level(bool on) {
     if (on) {
-        int x = (lvl % 10) * 24;
-        int y = (lvl / 10) * 24 + 21;
+        int x = (level_index % 10) * 24;
+        int y = (level_index / 10) * 24 + 21;
 
         shadow.sprites[0].attr0 = y;
         shadow.sprites[0].attr1 = x | OBJ_SIZE(2);
@@ -697,19 +699,19 @@ void highlight_level(int lvl, bool on) {
     }
 }
 
-bool change_level(int* lvl, int mod) {
-    int lvl2 = *lvl + mod;
+bool change_level(int mod) {
+    int lvl2 = level_index + mod;
     if ((lvl2 < 0) || (50 <= lvl2)) {
         return false;
     }
-    load(lvl2);
-    *lvl = lvl2;
+    level_index = lvl2;
+    load();
     return true;
 }
 
-IWRAM_CODE void select_level(int* lvl) {
+IWRAM_CODE void select_level() {
     bzero(MAP[10], sizeof(MAP[10]));
-    load(*lvl);
+    load();
 
     draw_str(9, 0, "SELECT LEVEL", 6);
     draw_str(8, 21, "(C)2026 SFIERA", 6);
@@ -737,17 +739,17 @@ IWRAM_CODE void select_level(int* lvl) {
     while (true) {
         u16 press = (~REG_KEYINPUT & last_keys);
         if (press & KEY_UP) {
-            change_level(lvl, -10);
+            change_level(-10);
         } else if (press & KEY_DOWN) {
-            change_level(lvl, +10);
+            change_level(+10);
         } else if (press & KEY_RIGHT) {
-            change_level(lvl, +1);
+            change_level(+1);
         } else if (press & KEY_LEFT) {
-            change_level(lvl, -1);
+            change_level(-1);
         } else if (press & (KEY_START | KEY_A)) {
             return;
         }
-        highlight_level(*lvl, true);
+        highlight_level(true);
         last_keys = REG_KEYINPUT;
 
         VBlankIntrWait();
@@ -817,14 +819,14 @@ IWRAM_CODE int main() {
     REG_IE |= IRQ_VBLANK;
     REG_IME = 1;
 
-    int lvl = 0;
+    level_index = 0;
     while (true) {
         game.state = GAME_MENU;
-        select_level(&lvl);
+        select_level();
         bool play = true;
         while (play) {
-            if (play_level(lvl)) {
-                play = change_level(&lvl, 1);
+            if (play_level()) {
+                play = change_level(1);
             } else {
                 play = false;
             }
