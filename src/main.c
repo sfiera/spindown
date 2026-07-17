@@ -11,6 +11,7 @@
 #include "gfx/orbs.h"
 #include "gfx/tiles.h"
 #include "gfx/ui.h"
+#include "gfx/ui2.h"
 #include "levels.h"
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
@@ -41,8 +42,45 @@ typedef enum {
 } tile_type_t;
 
 IWRAM_CODE void interrupt() {
-    REG_IF = IRQ_VBLANK;
-    REG_IFBIOS |= IRQ_VBLANK;
+    if (REG_IF & IRQ_VBLANK) {
+        REG_IF = IRQ_VBLANK;
+        REG_IFBIOS |= IRQ_VBLANK;
+    } else if (REG_IF & IRQ_HBLANK) {
+        REG_IF = IRQ_HBLANK;
+        if ((REG_VCOUNT == 40) || (REG_VCOUNT == 64) || (REG_VCOUNT == 88) ||
+            (REG_VCOUNT == 112)) {
+            OAM[1].attr2 += 2;
+            OAM[1].attr0 += 24;
+            OAM[2].attr0 += 24;
+            OAM[3].attr2 += 2;
+            OAM[3].attr0 += 24;
+            OAM[4].attr0 += 24;
+            OAM[5].attr2 += 2;
+            OAM[5].attr0 += 24;
+            OAM[6].attr0 += 24;
+            OAM[7].attr2 += 2;
+            OAM[7].attr0 += 24;
+            OAM[8].attr0 += 24;
+            OAM[9].attr2 += 2;
+            OAM[9].attr0 += 24;
+            OAM[10].attr0 += 24;
+            OAM[11].attr2 += 2;
+            OAM[11].attr0 += 24;
+            OAM[12].attr0 += 24;
+            OAM[13].attr2 += 2;
+            OAM[13].attr0 += 24;
+            OAM[14].attr0 += 24;
+            OAM[15].attr2 += 2;
+            OAM[15].attr0 += 24;
+            OAM[16].attr0 += 24;
+            OAM[17].attr2 += 2;
+            OAM[17].attr0 += 24;
+            OAM[18].attr0 += 24;
+            OAM[19].attr2 += 2;
+            OAM[19].attr0 += 24;
+            OAM[20].attr0 += 24;
+        }
+    }
 }
 
 IWRAM_DATA s16 sin_table[256] = {
@@ -174,9 +212,9 @@ void fill(loc_t l, u8 value) {
 }
 
 static inline void sprite_ch(u8 n, u16 x, u16 y, char ch) {
-    u16 value               = ((ch & 0xE0) << 1) | (ch & 0x1F);
-    shadow.sprites[n].attr0 = y | OBJ_SHAPE(2);
-    shadow.sprites[n].attr1 = x;
+    u16 value               = ((ch & 0xF0) << 2) | ((ch & 0x0F) << 1);
+    shadow.sprites[n].attr0 = y;
+    shadow.sprites[n].attr1 = x | OBJ_SIZE(1);
     shadow.sprites[n].attr2 = 0x100 | value | ATTR2_PALETTE(6);
 }
 
@@ -221,7 +259,7 @@ IWRAM_CODE void rotate(u8 matching) {
         sprite_ch(5, 17, 0, '0' | ((level_index + 1) % 10));
     }
 
-    int idx = 28;
+    int idx = 32;
     s8  cx  = (6 * game.width) - 6;
     s8  cy  = (6 * game.height) - 6;
     for (loc_t l = {.index = 0}; l.index < 14 * 16; ++l.index) {
@@ -265,7 +303,7 @@ IWRAM_CODE void rotate(u8 matching) {
             s->attr2 = (links * 2) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
         }
     }
-    while (idx < 128) {
+    while (idx < 64) {
         shadow.sprites[idx++].attr0 = 191;
     }
 }
@@ -461,7 +499,7 @@ void draw_str(int x, int y, const char* s, int color) {
 
 void load() {
     game.angle = 0;
-    for (size_t i = 1; i < 128; ++i) {
+    for (size_t i = 32; i < 96; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
     bzero(game.cells, sizeof(game.cells));
@@ -577,9 +615,13 @@ void restart() {
 bool play_level() {
     game.state = GAME_IDLE;
     game.steps = 0;
+    for (size_t i = 0; i < 128; ++i) {
+        shadow.sprites[i].attr0 = 191;
+    }
     load();
 
-    REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON;
+    REG_IE      = IRQ_VBLANK;
+    REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON | BIT(5);
     REG_BLDCNT  = 0;
     REG_BLDY    = 0;
 
@@ -721,21 +763,18 @@ IWRAM_CODE void select_level() {
     draw_str(8, 21, "(C)2026 SFIERA", 6);
 
     int i = 0x01;
-    for (int y = 0; y < 5; ++y) {
-        for (int x = 0; x < 10; ++x) {
-            int color                     = 6 << 12;
-            MAP[10][3 * y + 3][3 * x + 1] = 0x150 | (i >> 4) | color;
-            MAP[10][3 * y + 4][3 * x + 1] = 0x170 | (i >> 4) | color;
-            MAP[10][3 * y + 3][3 * x + 2] = 0x150 | (i & 0xF) | color;
-            MAP[10][3 * y + 4][3 * x + 2] = 0x170 | (i & 0xF) | color;
-            if ((++i & 0xF) == 10) {
-                i += (0x10 - 10);
-            }
+    int n = 1;
+    for (int x = 0; x < 10; ++x) {
+        sprite_ch(n++, (x * 24) + 4, 24, '0' | (i >> 4));
+        sprite_ch(n++, (x * 24) + 12, 24, '0' | (i & 0xF));
+        if ((++i & 0xF) == 10) {
+            i += (0x10 - 10);
         }
     }
     REG_BG0HOFS = 4;
 
-    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON;
+    REG_IE      = IRQ_VBLANK | IRQ_HBLANK;
+    REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | BIT(5);
     REG_BLDCNT  = 0x0C4;
     REG_BLDY    = 0x0A;
 
@@ -780,7 +819,7 @@ IWRAM_CODE int main() {
     for (size_t i = 0; i < orbsTilesLen / 2; ++i) {
         SPRITE_GFX[i] = orbsTiles[i];
     }
-    memcpy(&SPRITE_GFX[0x1000], uiTiles, uiTilesLen);
+    memcpy(&SPRITE_GFX[0x1000], ui2Tiles, ui2TilesLen);
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     memcpy(PATRAM4(0, 256), uiTiles, uiTilesLen);
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
@@ -819,8 +858,8 @@ IWRAM_CODE int main() {
     REG_SOUND4CNT_H = 0;       // frequency
 
     INT_VECTOR = interrupt;
-    REG_DISPSTAT |= LCDC_VBL;
-    REG_IE |= IRQ_VBLANK;
+    REG_DISPSTAT |= LCDC_VBL | LCDC_HBL;
+    REG_IE  = IRQ_VBLANK | IRQ_HBLANK;
     REG_IME = 1;
 
     level_index = 0;
