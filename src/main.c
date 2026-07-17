@@ -173,6 +173,13 @@ void fill(loc_t l, u8 value) {
     shadow.tilemap[index + 130] = *(src++);
 }
 
+static inline void sprite_ch(u8 n, u16 x, u16 y, char ch) {
+    u16 value               = ((ch & 0xE0) << 1) | (ch & 0x1F);
+    shadow.sprites[n].attr0 = y | OBJ_SHAPE(2);
+    shadow.sprites[n].attr1 = x;
+    shadow.sprites[n].attr2 = 0x100 | value | ATTR2_PALETTE(6);
+}
+
 IWRAM_CODE void rotate(u8 matching) {
     s16 cos = sin_table[(game.angle + 64) & 0xFF];
     s16 sin = sin_table[game.angle];
@@ -195,26 +202,23 @@ IWRAM_CODE void rotate(u8 matching) {
     }
 
     if (game.state != GAME_MENU) {
-        u16 steps               = game.steps;
-        shadow.sprites[0].attr0 = 143 | OBJ_SHAPE(2);
-        shadow.sprites[0].attr1 = 230;
-        shadow.sprites[0].attr2 = 0x150 | (steps % 10) | ATTR2_PALETTE(6);
+        u16 steps = game.steps;
+        sprite_ch(0, 230, 143, '0' | (steps % 10));
         steps /= 10;
         if (steps) {
-            shadow.sprites[1].attr0 = 143 | OBJ_SHAPE(2);
-            shadow.sprites[1].attr1 = 222;
-            shadow.sprites[1].attr2 = 0x150 | (steps % 10) | ATTR2_PALETTE(6);
+            sprite_ch(1, 222, 143, '0' | (steps % 10));
             steps /= 10;
         } else {
             shadow.sprites[1].attr0 = 191;
         }
         if (steps) {
-            shadow.sprites[2].attr0 = 143 | OBJ_SHAPE(2);
-            shadow.sprites[2].attr1 = 214;
-            shadow.sprites[2].attr2 = 0x150 | (steps % 10) | ATTR2_PALETTE(6);
+            sprite_ch(2, 214, 143, '0' | (steps % 10));
         } else {
             shadow.sprites[2].attr0 = 191;
         }
+        sprite_ch(3, 1, 0, '#');
+        sprite_ch(4, 9, 0, '0' | ((level_index + 1) / 10));
+        sprite_ch(5, 17, 0, '0' | ((level_index + 1) % 10));
     }
 
     int idx = 28;
