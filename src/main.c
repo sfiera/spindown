@@ -127,7 +127,7 @@ static const cell_t tile_empty = {.type = TILE_EMPTY};
 typedef union {
     cell_t reserved[16 * 16];
     struct {
-        cell_t       level[14 * 16];
+        cell_t       cells[14 * 16];
         game_state_t state;
         u8           angle;
         u8           width, height;
@@ -223,7 +223,7 @@ IWRAM_CODE void rotate(u8 matching) {
         if (!loc_valid(l)) {
             continue;
         }
-        const cell_t* cell = &game.level[l.index];
+        const cell_t* cell = &game.cells[l.index];
         if (!cell->has_sprite) {
             switch (cell->type) {
                 case TILE_BLOCK: fill(l, 16 | cell->links); break;
@@ -266,7 +266,7 @@ IWRAM_CODE void rotate(u8 matching) {
 }
 
 void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
-    cell_t* cell     = &game.level[l.index];
+    cell_t* cell     = &game.cells[l.index];
     cell->type       = type;
     cell->color      = color;
     cell->links      = links;
@@ -275,7 +275,7 @@ void set_tile(loc_t l, tile_type_t type, u8 color, u8 links) {
 }
 
 IWRAM_CODE void add_support(loc_t l, s8 up, s8 right, u8 link, bool sound) {
-    cell_t* cell = &game.level[l.index];
+    cell_t* cell = &game.cells[l.index];
     if (!loc_valid(l) || !cell->falling) {
         return;
     }
@@ -313,7 +313,7 @@ IWRAM_CODE void check_gravity_column(loc_t l, s8 up, s8 right, u8 link, bool sou
     cell_t *prev, *cell = NULL;
     for (; loc_valid(l); l.index += up) {
         prev = cell;
-        cell = &game.level[l.index];
+        cell = &game.cells[l.index];
         if (!cell->slides) {
             continue;  // cannot fall, not relevant
         } else if (prev && ((prev->type == TILE_EMPTY) || prev->falling)) {
@@ -340,7 +340,7 @@ IWRAM_CODE bool recheck_gravity(bool sound) {
 
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            if (game.level[l.index].falling) {
+            if (game.cells[l.index].falling) {
                 return true;
             }
         }
@@ -352,7 +352,7 @@ IWRAM_CODE bool check_gravity() {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            game.level[l.index].falling = game.level[l.index].slides;
+            game.cells[l.index].falling = game.cells[l.index].slides;
         }
     }
     return recheck_gravity(false);
@@ -362,7 +362,7 @@ IWRAM_CODE void drop_column(loc_t l, bool done, s8 up) {
     cell_t *prev, *cell = NULL;
     for (; loc_valid(l); l.index += up) {
         prev = cell;
-        cell = &game.level[l.index];
+        cell = &game.cells[l.index];
         if (!cell->falling) {
             continue;
         }
@@ -397,8 +397,8 @@ IWRAM_CODE bool match() {
     for (int y = 0; y < 13; ++y) {
         for (int x = 0; x < 13; ++x) {
             loc_t   la = {.y = y, .x = x}, lb = {.y = y, .x = x + 1}, lc = {.y = y + 1, .x = x};
-            cell_t *a = &game.level[la.index], *b = &game.level[lb.index],
-                   *c = &game.level[lc.index];
+            cell_t *a = &game.cells[la.index], *b = &game.cells[lb.index],
+                   *c = &game.cells[lc.index];
             if (!a->color) {
                 continue;
             }
@@ -426,7 +426,7 @@ IWRAM_CODE void remove_matches() {
     for (int y = 0; y < 14; ++y) {
         for (int x = 0; x < 14; ++x) {
             loc_t l = {.y = y, .x = x};
-            if (game.level[l.index].matched) {
+            if (game.cells[l.index].matched) {
                 set_tile(l, TILE_EMPTY, 0, 0);
             }
         }
@@ -437,7 +437,7 @@ IWRAM_CODE bool done() {
     loc_t l;
     for (l.y = 0; l.y < 14; ++l.y) {
         for (l.x = 0; l.x < 14; ++l.x) {
-            if (game.level[l.index].color) {
+            if (game.cells[l.index].color) {
                 return false;
             }
         }
@@ -459,7 +459,7 @@ void load(int lvl) {
     for (size_t i = 1; i < 128; ++i) {
         shadow.sprites[i].attr0 = 191;
     }
-    bzero(game.level, sizeof(game.level));
+    bzero(game.cells, sizeof(game.cells));
     bzero(shadow.tilemap, sizeof(shadow.tilemap));
 
     const char* tiles = level_set[lvl].data;
