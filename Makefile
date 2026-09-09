@@ -22,8 +22,9 @@ GRIT        = gfx/font.grit \
 all: $(TARGET)
 
 BUILD       = build
-GAME_CODE   = 0000
-MAKER_CODE  = 00
+GAME_CODE   = BSVE
+MAKER_CODE  = SF
+REVISION    = 00
 
 ARCH        = -marm
 LIBS        =
@@ -62,7 +63,7 @@ optipng:
 
 %.gba: $(BUILD)/%.elf
 	$(OBJCOPY) -O binary $< $(BUILD)/$*.gba
-	gbafix $(BUILD)/$*.gba -t$* -c$(GAME_CODE) -m$(MAKER_CODE)
+	gbafix $(BUILD)/$*.gba -t$* -c$(GAME_CODE) -m$(MAKER_CODE) -r$(REVISION)
 	mv $(BUILD)/$*.gba .
 
 $(BUILD)/spindown.elf: $(OBJ)
