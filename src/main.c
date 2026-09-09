@@ -8,10 +8,10 @@
 #include <gba_video.h>
 #include <string.h>
 
+#include "gfx/font.h"
 #include "gfx/logo.h"
 #include "gfx/orbs.h"
 #include "gfx/tiles.h"
-#include "gfx/ui.h"
 #include "gfx/ui2.h"
 #include "levels.h"
 
@@ -782,7 +782,6 @@ IWRAM_CODE int play() {
     }
     memcpy(&SPRITE_GFX[0x1000], ui2Tiles, ui2TilesLen);
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
-    memcpy(PATRAM4(0, 256), uiTiles, uiTilesLen);
     for (size_t i = 0; i < 128; ++i) {
         shadow.sprites[i].attr0 = OAM[i].attr0 = 191;
     }
