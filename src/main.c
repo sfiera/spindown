@@ -8,6 +8,7 @@
 #include <gba_video.h>
 #include <string.h>
 
+#include "gfx/logo.h"
 #include "gfx/orbs.h"
 #include "gfx/tiles.h"
 #include "gfx/ui.h"
@@ -771,9 +772,7 @@ IWRAM_CODE void select_level() {
     }
 }
 
-IWRAM_CODE int main() {
-    REG_DISPCNT = LCDC_OFF;  // Enable forced blank
-
+IWRAM_CODE int play() {
     u32* tileset = CHAR_BASE_ADR(0);
     for (size_t i = 0; i < tilesTilesLen / 4; ++i) {
         tileset[i] = tilesTiles[i];
@@ -784,6 +783,81 @@ IWRAM_CODE int main() {
     memcpy(&SPRITE_GFX[0x1000], ui2Tiles, ui2TilesLen);
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     memcpy(PATRAM4(0, 256), uiTiles, uiTilesLen);
+    for (size_t i = 0; i < 128; ++i) {
+        shadow.sprites[i].attr0 = OAM[i].attr0 = 191;
+    }
+
+    level_index = 0;
+    while (true) {
+        game.state = GAME_MENU;
+        select_level();
+        bool play = true;
+        while (play) {
+            if (play_level()) {
+                play = change_level(1);
+            } else {
+                play = false;
+            }
+        }
+    }
+}
+
+IWRAM_CODE void logo() {
+    memcpy(CHAR_BASE_ADR(0), logoTiles, logoTilesLen);
+    DMA3COPY(&logoMap, MAP_BASE_ADR(8), (logoMapLen / 4) | DMA32 | DMA_IMMEDIATE);
+    REG_DISPCNT = MODE_1 | BG2_ON | BIT(5);
+
+    REG_BLDCNT = 0x00FF;
+    REG_BLDY   = 0x10;
+    int delay  = 0x20;
+
+    int state     = 0;
+    u16 last_keys = REG_KEYINPUT;
+    while (true) {
+        VBlankIntrWait();
+
+        switch (state) {
+            case 0: {
+                REG_BLDY = (--delay / 2);
+                if (!delay) {
+                    state = 1;
+                }
+                break;
+            }
+            case 1: {
+                u16 press = (~REG_KEYINPUT & last_keys);
+                if (press & (KEY_A | KEY_START)) {
+                    delay = 0x20;
+                    state = 2;
+                }
+                last_keys = REG_KEYINPUT;
+                break;
+            }
+            case 2: {
+                REG_BLDY = (32 - --delay) / 2;
+                if (!delay) {
+                    return;
+                }
+                break;
+            }
+        }
+    }
+}
+
+IWRAM_CODE int main() {
+    REG_DISPCNT = LCDC_OFF;  // Enable forced blank
+
+    REG_SOUNDCNT_X  = 0x80;
+    REG_SOUNDCNT_L  = 0xFF77;
+    REG_SOUNDCNT_H  = 0x0002;
+    REG_SOUND1CNT_L = 0;       // sweep
+    REG_SOUND1CNT_H = 0xF181;  // envelope, length
+    REG_SOUND1CNT_X = 0;       // frequency
+    REG_SOUND2CNT_L = 0xF181;  // envelope, length
+    REG_SOUND2CNT_H = 0;       // frequency
+    REG_SOUND4CNT_L = 0x3000;  // envelope, length
+    REG_SOUND4CNT_H = 0;       // frequency
+
     for (size_t i = 0; i < tilesPalLen / 2; ++i) {
         BG_COLORS[i] = OBJ_COLORS[i] = shadow.palette[i] = tilesPal[i];
     }
@@ -802,39 +876,15 @@ IWRAM_CODE int main() {
         color.blue *= 0.375;
         OBJ_COLORS[i + 128] = color.value;
     }
-    for (size_t i = 0; i < 128; ++i) {
-        shadow.sprites[i].attr0 = OAM[i].attr0 = 191;
-    }
+
     REG_BG2CNT = BG_SIZE_2 | BG_256_COLOR | CHAR_BASE(0) | SCREEN_BASE(8) | BG_PRIORITY(1);
     REG_BG0CNT = BG_SIZE_0 | BG_16_COLOR | CHAR_BASE(0) | SCREEN_BASE(10);
-
-    REG_SOUNDCNT_X  = 0x80;
-    REG_SOUNDCNT_L  = 0xFF77;
-    REG_SOUNDCNT_H  = 0x0002;
-    REG_SOUND1CNT_L = 0;       // sweep
-    REG_SOUND1CNT_H = 0xF181;  // envelope, length
-    REG_SOUND1CNT_X = 0;       // frequency
-    REG_SOUND2CNT_L = 0xF181;  // envelope, length
-    REG_SOUND2CNT_H = 0;       // frequency
-    REG_SOUND4CNT_L = 0x3000;  // envelope, length
-    REG_SOUND4CNT_H = 0;       // frequency
 
     INT_VECTOR = interrupt;
     REG_DISPSTAT |= LCDC_VBL;
     REG_IE  = IRQ_VBLANK;
     REG_IME = 1;
 
-    level_index = 0;
-    while (true) {
-        game.state = GAME_MENU;
-        select_level();
-        bool play = true;
-        while (play) {
-            if (play_level()) {
-                play = change_level(1);
-            } else {
-                play = false;
-            }
-        }
-    }
+    logo();
+    play();
 }

@@ -12,7 +12,8 @@ include $(DEVKITARM)/base_tools
 TARGET      = spindown.gba
 SRC         = src/levels.c \
               src/main.c
-GRIT        = gfx/orbs.grit \
+GRIT        = gfx/logo.grit \
+              gfx/orbs.grit \
               gfx/tiles.grit \
               gfx/ui.grit \
               gfx/ui2.grit
@@ -81,8 +82,9 @@ build/%.s build/%.h: %.grit %.png
 
 .SECONDARY:
 
-build/src/main.c.o: build/gfx/tiles.h
+build/src/main.c.o: build/gfx/logo.h
 build/src/main.c.o: build/gfx/orbs.h
+build/src/main.c.o: build/gfx/tiles.h
 build/src/main.c.o: build/gfx/ui.h
 build/src/main.c.o: build/gfx/ui2.h
 
