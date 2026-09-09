@@ -454,12 +454,13 @@ IWRAM_CODE bool done() {
     return true;
 }
 
-void draw_str(int x, int y, const char* s, int color) {
+void draw_str(int y, const char* s, int color) {
     for (int i = 0; i < strlen(s); ++i) {
-        char ch = (s[i] & 0x1F) | ((s[i] & 0xE0) << 1);
-
-        MAP[10][y + 0][i + x] = 0x100 | ch | (color << 12);
-        MAP[10][y + 1][i + x] = 0x120 | ch | (color << 12);
+        int idx = (s[i] - ' ') * 64;
+        for (int j = 0; j < 32; ++j) {
+            SPRITE_GFX[0x3000 + (32 * 16 * 2 * y) + (16 * i) + j] |= fontTiles[idx + j];
+            SPRITE_GFX[0x3000 + (32 * 16 * (2 * y + 1)) + (16 * i) + j] |= fontTiles[idx + j + 32];
+        }
     }
 }
 
@@ -506,11 +507,15 @@ void load() {
         }
     }
 
-    int len   = strlen(level->title);
-    int start = (31 - len) / 2;
+    int len = strlen(level->title);
     bzero(MAP[10][18], sizeof(MAP[10][0]));
     bzero(MAP[10][19], sizeof(MAP[10][1]));
-    draw_str(start, 18, level->title, 6);
+    bzero(&SPRITE_GFX[0x3000], 32 * 32 * 2);
+    for (int i = 0; i < 5; ++i) {
+        OAM[i + 5].attr1 = shadow.sprites[i + 5].attr1 =
+            ((32 * i) + (240 / 2) - (len * 8 / 2)) | OBJ_SIZE(2);
+    }
+    draw_str(0, level->title, 6);
     rotate(0);
 }
 
@@ -701,7 +706,7 @@ bool play_level() {
 void highlight_level(bool on) {
     if (on) {
         int x = (level_index % 10) * 24;
-        int y = (level_index / 10) * 24 + 21;
+        int y = (level_index / 10) * 22 + 25;
 
         shadow.sprites[0].attr0 = y;
         shadow.sprites[0].attr1 = x | OBJ_SIZE(2);
@@ -725,14 +730,24 @@ IWRAM_CODE void select_level() {
     bzero(MAP[10], sizeof(MAP[10]));
     load();
 
-    draw_str(9, 0, "SELECT LEVEL", 6);
-    draw_str(8, 21, "(C)2026 SFIERA", 6);
+    for (int i = 0; i < 4; ++i) {
+        shadow.sprites[i + 1].attr0 = 4 | ATTR0_WIDE;
+        shadow.sprites[i + 1].attr1 = ((32 * i) + ((240 - 96) / 2)) | OBJ_SIZE(2);
+        shadow.sprites[i + 1].attr2 = (0x340 + (4 * i)) | ATTR2_PALETTE(6);
+    }
+    int len = strlen(level_set[level_index].title);
+    for (int i = 0; i < 5; ++i) {
+        shadow.sprites[i + 5].attr0 = (160 - 20) | ATTR0_WIDE;
+        shadow.sprites[i + 5].attr1 = OAM[i + 5].attr1 =
+            ((32 * i) + (240 / 2) - (len * 8 / 2)) | OBJ_SIZE(2);
+        shadow.sprites[i + 5].attr2 = (0x300 + (4 * i)) | ATTR2_PALETTE(6);
+    }
 
     for (int x = 0; x < 50; ++x) {
-        u16 value                   = ((x & 0xF8) << 3) | ((x & 0x07) << 2);
-        shadow.sprites[x + 1].attr0 = (((x / 10) * 24) + 24) | ATTR0_WIDE;
-        shadow.sprites[x + 1].attr1 = (((x % 10) * 24) + 4) | OBJ_SIZE(2);
-        shadow.sprites[x + 1].attr2 = (0x100 + value) | ATTR2_PALETTE(6);
+        u16 value                    = ((x & 0xF8) << 3) | ((x & 0x07) << 2);
+        shadow.sprites[x + 10].attr0 = (((x / 10) * 22) + 28) | ATTR0_WIDE;
+        shadow.sprites[x + 10].attr1 = (((x % 10) * 24) + 4) | OBJ_SIZE(2);
+        shadow.sprites[x + 10].attr2 = (0x100 + value) | ATTR2_PALETTE(6);
     }
     REG_BG0HOFS = 4;
 
@@ -845,6 +860,9 @@ IWRAM_CODE void logo() {
 
 IWRAM_CODE int main() {
     REG_DISPCNT = LCDC_OFF;  // Enable forced blank
+
+    draw_str(1, "SELECT LEVEL", 6);
+    draw_str(3, "(C)2026 SFIERA", 6);
 
     REG_SOUNDCNT_X  = 0x80;
     REG_SOUNDCNT_L  = 0xFF77;
