@@ -754,7 +754,7 @@ IWRAM_CODE void select_level() {
     REG_IE      = IRQ_VBLANK;
     REG_DISPCNT = MODE_1 | BG0_ON | BG2_ON | OBJ_ON | BIT(5);
     REG_BLDCNT  = 0x0C4;
-    REG_BLDY    = 0x0A;
+    REG_BLDY    = 0x08;
 
     u16 last_keys = REG_KEYINPUT;
     while (true) {
