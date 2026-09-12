@@ -12,7 +12,6 @@
 #include "gfx/logo.h"
 #include "gfx/orbs.h"
 #include "gfx/tiles.h"
-#include "gfx/ui2.h"
 #include "levels.h"
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
@@ -454,13 +453,17 @@ IWRAM_CODE bool done() {
     return true;
 }
 
-void draw_str(int y, const char* s, int color) {
+void draw_str(int x, int y, const char* s) {
+    u16* dst = &SPRITE_GFX[(32 * 16 * 2 * y) + (x * 16)];
     for (int i = 0; i < strlen(s); ++i) {
-        int idx = (s[i] - ' ') * 64;
+        int        idx = (s[i] - ' ') * 64;
+        const u16* src = &fontTiles[idx];
         for (int j = 0; j < 32; ++j) {
-            SPRITE_GFX[0x3000 + (32 * 16 * 2 * y) + (16 * i) + j] |= fontTiles[idx + j];
-            SPRITE_GFX[0x3000 + (32 * 16 * (2 * y + 1)) + (16 * i) + j] |= fontTiles[idx + j + 32];
+            dst[0x000] |= src[0x00];
+            dst[0x200] |= src[0x20];
+            ++dst, ++src;
         }
+        dst -= 0x10;
     }
 }
 
@@ -515,7 +518,7 @@ void load() {
         OAM[i + 5].attr1 = shadow.sprites[i + 5].attr1 =
             ((32 * i) + (240 / 2) - (len * 8 / 2)) | OBJ_SIZE(2);
     }
-    draw_str(0, level->title, 6);
+    draw_str(0, 12, level->title);
     rotate(0);
 }
 
@@ -795,7 +798,15 @@ IWRAM_CODE int play() {
     for (size_t i = 0; i < orbsTilesLen / 2; ++i) {
         SPRITE_GFX[i] = orbsTiles[i];
     }
-    memcpy(&SPRITE_GFX[0x1000], ui2Tiles, ui2TilesLen);
+    for (int i = 0; i < 50; ++i) {
+        const char s[3] = {'0' + ((i + 1) / 10), '0' + ((i + 1) % 10), '\0'};
+        draw_str(4 * (i % 8), 4 + (i / 8), s);
+    }
+    for (int i = 0; i < 10; ++i) {
+        const char s[2] = {'0' + i, '\0'};
+        draw_str(2 * i, 11, s);
+    }
+    draw_str(20, 11, "#");
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     for (size_t i = 0; i < 128; ++i) {
         shadow.sprites[i].attr0 = OAM[i].attr0 = 191;
@@ -861,8 +872,8 @@ IWRAM_CODE void logo() {
 IWRAM_CODE int main() {
     REG_DISPCNT = LCDC_OFF;  // Enable forced blank
 
-    draw_str(1, "SELECT LEVEL", 6);
-    draw_str(3, "(C)2026 SFIERA", 6);
+    draw_str(0, 13, "SELECT LEVEL");
+    draw_str(0, 15, "(C)2026 SFIERA");
 
     REG_SOUNDCNT_X  = 0x80;
     REG_SOUNDCNT_L  = 0xFF77;

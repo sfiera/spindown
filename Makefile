@@ -15,8 +15,7 @@ SRC         = src/levels.c \
 GRIT        = gfx/font.grit \
               gfx/logo.grit \
               gfx/orbs.grit \
-              gfx/tiles.grit \
-              gfx/ui2.grit
+              gfx/tiles.grit
 
 .PHONY: all
 all: $(TARGET)
@@ -87,6 +86,5 @@ build/src/main.c.o: build/gfx/font.h
 build/src/main.c.o: build/gfx/logo.h
 build/src/main.c.o: build/gfx/orbs.h
 build/src/main.c.o: build/gfx/tiles.h
-build/src/main.c.o: build/gfx/ui2.h
 
 -include $(OBJ:.o=.d)
