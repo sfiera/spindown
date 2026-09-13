@@ -23,7 +23,7 @@ all: $(TARGET)
 BUILD       = build
 GAME_CODE   = BSVE
 MAKER_CODE  = SF
-REVISION    = 00
+REVISION    = 01
 
 ARCH        = -marm
 LIBS        =
