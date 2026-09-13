@@ -145,7 +145,8 @@ IWRAM_DATA game_t game = {
     .state = GAME_MENU,
     .angle = 0,
 };
-IWRAM_DATA u8 menu_index;
+IWRAM_DATA u8  menu_index;
+EWRAM_DATA s16 best_scores[50];
 
 IWRAM_DATA struct {
     union {
@@ -666,8 +667,9 @@ bool play_level() {
 
                 remove_matches();
                 if (done()) {
-                    game.state = GAME_WIN;
-                    delay      = 30;
+                    best_scores[level_index] = game.steps;
+                    game.state               = GAME_WIN;
+                    delay                    = 30;
                 } else if (check_gravity()) {
                     game.state = GAME_FALL;
                     delay      = 6;
@@ -766,9 +768,27 @@ void highlight_level(bool on) {
     }
 }
 
+bool is_level_complete(int level) { return best_scores[level] != 0; }
+
+bool is_level_playable(int level) {
+    if ((level < 0) || (50 <= level)) {
+        return false;
+    } else if (level < 10) {
+        return true;
+    }
+    int count = 0;
+    int start = (level - (level % 10) - 10);
+    for (int i = 0; i < 10; ++i) {
+        if (is_level_complete(start + i) && (++count >= 8)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool change_level(int mod, bool sound) {
     int lvl2 = level_index + mod;
-    if ((lvl2 < 0) || (50 <= lvl2)) {
+    if (!is_level_playable(lvl2)) {
         return false;
     }
     level_index = lvl2;
@@ -800,7 +820,10 @@ IWRAM_CODE void select_level() {
         u16 value                    = ((x & 0xF8) << 3) | ((x & 0x07) << 2);
         shadow.sprites[x + 10].attr0 = (((x / 10) * 22) + 28) | ATTR0_WIDE;
         shadow.sprites[x + 10].attr1 = (((x % 10) * 24) + 4) | OBJ_SIZE(2);
-        shadow.sprites[x + 10].attr2 = (0x100 + value) | ATTR2_PALETTE(6);
+        shadow.sprites[x + 10].attr2 = (0x100 + value) | ATTR2_PALETTE(
+                                                             is_level_complete(x)   ? 2
+                                                             : is_level_playable(x) ? 6
+                                                                                    : 14);
     }
     REG_BG0HOFS = 4;
 
