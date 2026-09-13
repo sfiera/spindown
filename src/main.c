@@ -454,7 +454,7 @@ IWRAM_CODE bool done() {
 }
 
 void draw_str(int x, int y, const char* s) {
-    u16* dst = &SPRITE_GFX[(32 * 16 * 2 * y) + (x * 16)];
+    u16* dst = &SPRITE_GFX[(32 * 16 * y) + (x * 16)];
     for (int i = 0; i < strlen(s); ++i) {
         int        idx = (s[i] - ' ') * 64;
         const u16* src = &fontTiles[idx];
@@ -513,12 +513,13 @@ void load() {
     int len = strlen(level->title);
     bzero(MAP[10][18], sizeof(MAP[10][0]));
     bzero(MAP[10][19], sizeof(MAP[10][1]));
-    bzero(&SPRITE_GFX[0x3000], 32 * 32 * 2);
+    bzero(&SPRITE_GFX[0x3000], 32 * 24);
+    bzero(&SPRITE_GFX[0x3200], 32 * 24);
     for (int i = 0; i < 5; ++i) {
         OAM[i + 5].attr1 = shadow.sprites[i + 5].attr1 =
             ((32 * i) + (240 / 2) - (len * 8 / 2)) | OBJ_SIZE(2);
     }
-    draw_str(0, 12, level->title);
+    draw_str(0, 24, level->title);
     rotate(0);
 }
 
@@ -800,13 +801,13 @@ IWRAM_CODE int play() {
     }
     for (int i = 0; i < 50; ++i) {
         const char s[3] = {'0' + ((i + 1) / 10), '0' + ((i + 1) % 10), '\0'};
-        draw_str(4 * (i % 8), 4 + (i / 8), s);
+        draw_str(4 * (i % 8), 8 + ((i / 4) & 0x1E), s);
     }
     for (int i = 0; i < 10; ++i) {
         const char s[2] = {'0' + i, '\0'};
-        draw_str(2 * i, 11, s);
+        draw_str(2 * i, 22, s);
     }
-    draw_str(20, 11, "#");
+    draw_str(20, 22, "#");
     memcpy(CHAR_BASE_ADR(0), tilesTiles, tilesTilesLen);
     for (size_t i = 0; i < 128; ++i) {
         shadow.sprites[i].attr0 = OAM[i].attr0 = 191;
@@ -872,8 +873,11 @@ IWRAM_CODE void logo() {
 IWRAM_CODE int main() {
     REG_DISPCNT = LCDC_OFF;  // Enable forced blank
 
-    draw_str(0, 13, "SELECT LEVEL");
-    draw_str(0, 15, "(C)2026 SFIERA");
+    draw_str(0, 26, "SELECT LEVEL");
+    draw_str(0, 30, "(C)2026 SFIERA");
+    draw_str(24, 24, "BACK");
+    draw_str(24, 27, "RESTART");
+    draw_str(24, 30, "EXIT");
 
     REG_SOUNDCNT_X  = 0x80;
     REG_SOUNDCNT_L  = 0xFF77;
