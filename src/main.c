@@ -903,9 +903,9 @@ IWRAM_CODE int main() {
             };
             u16 value;
         } color = {.value = OBJ_COLORS[i]};
-        color.red *= 0.375;
-        color.green *= 0.375;
-        color.blue *= 0.375;
+        color.red *= 0.5;
+        color.green *= 0.5;
+        color.blue *= 0.5;
         OBJ_COLORS[i + 128] = color.value;
     }
 
