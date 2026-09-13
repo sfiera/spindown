@@ -23,6 +23,7 @@ typedef enum {
     GAME_FALL,
     GAME_CLEAR,
     GAME_WIN,
+    GAME_PAUSE,
 } game_state_t;
 
 typedef enum {
@@ -144,6 +145,7 @@ IWRAM_DATA game_t game = {
     .state = GAME_MENU,
     .angle = 0,
 };
+IWRAM_DATA u8 menu_index;
 
 IWRAM_DATA struct {
     union {
@@ -222,11 +224,24 @@ IWRAM_CODE void rotate(u8 matching) {
         sprite_ch(3, 1, 0, '9' + 1);
         sprite_ch(4, 9, 0, '0' | ((level_index + 1) / 10));
         sprite_ch(5, 17, 0, '0' | ((level_index + 1) % 10));
+
+        if (game.state == GAME_PAUSE) {
+            shadow.sprites[6].attr0 = (80 - 32);
+            shadow.sprites[6].attr1 = (120 - 32) | OBJ_SIZE(3);
+            shadow.sprites[6].attr2 = (0x318) | ATTR2_PALETTE(6);
+            shadow.sprites[7].attr0 = (80 - 32 + (24 * menu_index));
+            shadow.sprites[7].attr1 = (120 - 32 - 16) | OBJ_SIZE(1);
+            shadow.sprites[7].attr2 = (90) | ATTR2_PALETTE(0);
+        } else {
+            shadow.sprites[6].attr0 = 191;
+            shadow.sprites[7].attr0 = 191;
+        }
     }
 
-    int idx = 64;
-    s8  cx  = (6 * game.width) - 6;
-    s8  cy  = (6 * game.height) - 6;
+    int idx          = 64;
+    s8  cx           = (6 * game.width) - 6;
+    s8  cy           = (6 * game.height) - 6;
+    int palette_base = ((game.state == GAME_MENU || game.state == GAME_PAUSE) ? 8 : 0) - 1;
     for (loc_t l = {.index = 0}; l.index < 14 * 16; ++l.index) {
         if (!loc_valid(l)) {
             continue;
@@ -261,8 +276,7 @@ IWRAM_CODE void rotate(u8 matching) {
         s->attr0   = (ox - ((cos * y + -sin * x) >> 8));
         s->attr1   = (oy - ((sin * y + cos * x) >> 8)) | OBJ_SIZE(1);
         if (cell->color) {
-            s->attr2 = tile | ATTR2_PRIORITY(1) |
-                       ATTR2_PALETTE(cell->color - 1 + (game.state == GAME_MENU ? 8 : 0));
+            s->attr2 = tile | ATTR2_PRIORITY(1) | ATTR2_PALETTE(cell->color + palette_base);
         } else {
             u8 links = ((cell->links | (cell->links << 4)) >> a4) & 0xF;
             s->attr2 = (links * 2) | ATTR2_PRIORITY(1) | ATTR2_PALETTE(5);
@@ -597,7 +611,7 @@ bool play_level() {
 
     REG_IE      = IRQ_VBLANK;
     REG_DISPCNT = MODE_1 | BG2_ON | OBJ_ON | BIT(5);
-    REG_BLDCNT  = 0;
+    REG_BLDCNT  = 0x0C4;
     REG_BLDY    = 0;
 
     u16 last_keys = REG_KEYINPUT;
@@ -692,7 +706,39 @@ bool play_level() {
                 } else if (press & (KEY_SELECT)) {
                     restart();
                 } else if (press & (KEY_START)) {
-                    return false;
+                    REG_BLDY        = 0x08;
+                    menu_index      = 0;
+                    game.state      = GAME_PAUSE;
+                    REG_SOUND1CNT_X = 0x88B4;  // frequency
+                }
+                last_keys = REG_KEYINPUT;
+                break;
+            }
+
+            case GAME_PAUSE: {
+                u16 press = (~REG_KEYINPUT & last_keys);
+                if (press & KEY_UP) {
+                    menu_index      = (menu_index + 2) % 3;
+                    REG_SOUND1CNT_X = 0x8774;  // frequency
+                } else if (press & KEY_DOWN) {
+                    menu_index      = (menu_index + 1) % 3;
+                    REG_SOUND1CNT_X = 0x8774;  // frequency
+                } else if (press & (KEY_A | KEY_START)) {
+                    switch (menu_index) {
+                        case 0:
+                            REG_BLDY   = 0x00;
+                            game.state = GAME_IDLE;
+                            break;
+                        case 1:
+                            REG_BLDY   = 0x00;
+                            game.state = GAME_IDLE;
+                            restart();
+                            break;
+                        case 2: return false;
+                    }
+                } else if (press & (KEY_B)) {
+                    REG_BLDY   = 0x00;
+                    game.state = GAME_IDLE;
                 }
                 last_keys = REG_KEYINPUT;
                 break;
@@ -720,13 +766,16 @@ void highlight_level(bool on) {
     }
 }
 
-bool change_level(int mod) {
+bool change_level(int mod, bool sound) {
     int lvl2 = level_index + mod;
     if ((lvl2 < 0) || (50 <= lvl2)) {
         return false;
     }
     level_index = lvl2;
     load();
+    if (sound) {
+        REG_SOUND1CNT_X = 0x8774;  // frequency
+    }
     return true;
 }
 
@@ -764,13 +813,13 @@ IWRAM_CODE void select_level() {
     while (true) {
         u16 press = (~REG_KEYINPUT & last_keys);
         if (press & KEY_UP) {
-            change_level(-10);
+            change_level(-10, true);
         } else if (press & KEY_DOWN) {
-            change_level(+10);
+            change_level(+10, true);
         } else if (press & KEY_RIGHT) {
-            change_level(+1);
+            change_level(+1, true);
         } else if (press & KEY_LEFT) {
-            change_level(-1);
+            change_level(-1, true);
         } else if (press & (KEY_START | KEY_A)) {
             return;
         }
@@ -820,7 +869,7 @@ IWRAM_CODE int play() {
         bool play = true;
         while (play) {
             if (play_level()) {
-                play = change_level(1);
+                play = change_level(1, false);
             } else {
                 play = false;
             }
