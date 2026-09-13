@@ -16,6 +16,8 @@
 
 #define REG_IFBIOS (*(volatile u16*)(0x03007FF8))
 
+static char sram_magic[] __attribute__((aligned(4))) = "SRAM_V113";
+
 typedef enum {
     GAME_MENU,
     GAME_IDLE,
@@ -145,8 +147,13 @@ IWRAM_DATA game_t game = {
     .state = GAME_MENU,
     .angle = 0,
 };
-IWRAM_DATA u8  menu_index;
-EWRAM_DATA s16 best_scores[50];
+IWRAM_DATA u8 menu_index;
+
+typedef struct {
+    char magic[8];
+    s16  records[50];
+} save_t;
+EWRAM_DATA save_t save;
 
 IWRAM_DATA struct {
     union {
@@ -161,6 +168,13 @@ IWRAM_DATA struct {
     s16 pa, pb, pc, pd;
     s32 x, y;
 } bg2;
+
+EWRAM_CODE void copy8(char* dst, const char* src, int size) {
+    while (size) {
+        *(dst++) = *(src++);
+        --size;
+    }
+}
 
 void fill(loc_t l, u8 value) {
     u8 x = l.x * 3;
@@ -667,9 +681,10 @@ bool play_level() {
 
                 remove_matches();
                 if (done()) {
-                    best_scores[level_index] = game.steps;
-                    game.state               = GAME_WIN;
-                    delay                    = 30;
+                    save.records[level_index] = game.steps;
+                    copy8((char*)SRAM, (const char*)&save, sizeof(save));
+                    game.state = GAME_WIN;
+                    delay      = 30;
                 } else if (check_gravity()) {
                     game.state = GAME_FALL;
                     delay      = 6;
@@ -768,7 +783,7 @@ void highlight_level(bool on) {
     }
 }
 
-bool is_level_complete(int level) { return best_scores[level] != 0; }
+bool is_level_complete(int level) { return save.records[level] != 0; }
 
 bool is_level_playable(int level) {
     if ((level < 0) || (50 <= level)) {
@@ -943,6 +958,14 @@ IWRAM_CODE void logo() {
 }
 
 IWRAM_CODE int main() {
+    if (strcmp(sram_magic, "SRAM_V113") == 0) {
+        copy8((char*)&save, (const char*)SRAM, sizeof(save));
+        if (memcmp(save.magic, "SPINDOWN", 8) != 0) {
+            bzero(&save, sizeof(save));
+            memcpy(save.magic, "SPINDOWN", 8);
+        }
+    }
+
     REG_DISPCNT = LCDC_OFF;  // Enable forced blank
 
     draw_str(0, 26, "SELECT LEVEL");
